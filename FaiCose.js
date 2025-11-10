@@ -510,7 +510,7 @@ const CalendarManager = {
         DOM.numInput.setAttribute('title', `Seleziona tra 1 e ${state.currentService.max_capacity_per_slot} persone`);
         PricingManager.update();
     }
-}
+},
 
 
     render() { 
