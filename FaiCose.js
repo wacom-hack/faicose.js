@@ -497,21 +497,23 @@ const StepNavigation = {
 // CALENDAR MANAGER
 
 const CalendarManager = {
-    selectDate(date) {
-        state.selectedDate = date;
-        state.selectedHour = null;
+  selectDate(date) {
+    state.selectedDate = date;
+    state.selectedHour = null;
 
-        this.render();
-        HoursManager.render();
+    this.render();
+    HoursManager.render();
 
-        if (DOM.numInput && state.currentService.max_capacity_per_slot) {
-            DOM.numInput.setAttribute('max', state.currentService.max_capacity_per_slot);
-            DOM.numInput.setAttribute('title', `Seleziona tra 1 e ${state.currentService.max_capacity_per_slot} persone`);
-            PricingManager.update();
-        }
-    },
+    // Aggiorna input persone e pricing
+    if (DOM.numInput && state.currentService?.max_capacity_per_slot) {
+        DOM.numInput.setAttribute('max', state.currentService.max_capacity_per_slot);
+        DOM.numInput.setAttribute('title', `Seleziona tra 1 e ${state.currentService.max_capacity_per_slot} persone`);
+        PricingManager.update();
+    }
+}
 
-    render() {
+
+    render() { 
         if (!DOM.calendarGrid || !state.currentService) return;
 
         DOM.calendarGrid.innerHTML = '';
@@ -570,7 +572,6 @@ const CalendarManager = {
         }
     },
 
-    getAvailabilityRules() {
         getAvailabilityRules() {
             const availability = state.currentService._availability;
 
@@ -673,14 +674,6 @@ const CalendarManager = {
             }
 
             return dateDiv;
-        },
-
-        selectDate(date) {
-            state.selectedDate = date;
-            state.selectedHour = null;
-
-            this.render();
-            HoursManager.render();
         },
 
         changeMonth(delta) {
@@ -1546,4 +1539,3 @@ window.BookingSystem = {
     ServiceLoader,
     Utils
 };
-</script >
