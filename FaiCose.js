@@ -1002,8 +1002,7 @@ getAvailableHours() {
         }
 
         return btn;
-    }
-};
+    },
 
 
     updateNumberInputLimit(maxAvailableSpots) {
