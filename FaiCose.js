@@ -1513,7 +1513,19 @@ const ServiceLoader = {
             console.log(`🔄 Caricamento servizio: ${serviceSlug}`);
             state.currentService = await API.getServiceBySlug(serviceSlug);
             console.log("✅ Servizio caricato:", state.currentService);
-
+            
+            // DEBUG: Verifica dati artigiano e servizi
+            if (state.currentService._artisan) {
+                console.log("👨‍🔧 Artigiano:", state.currentService._artisan);
+                console.log("📦 Servizi artigiano:", state.currentService._artisan._services_of_artisan);
+                
+                if (state.currentService._artisan._services_of_artisan) {
+                    const otherServices = state.currentService._artisan._services_of_artisan
+                        .filter(s => s.id !== state.currentService.id);
+                    console.log(`🔍 ${otherServices.length} altri servizi dell'artigiano:`, otherServices);
+                }
+            }
+            
             state.selectedDate = null;
             state.selectedHour = null;
             state.currentDate = new Date();
