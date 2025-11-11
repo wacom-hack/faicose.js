@@ -261,83 +261,80 @@ const API = {
     },
 
 
-        async getServiceBySlug(slug) {
-        const cacheKey = `service_${slug}`;
-        const cached = sessionStorage.getItem(cacheKey);
-        if (cached) {
-            const data = JSON.parse(cached);
-            if (Date.now() - data._cached < 3600000) {
-                console.log('✅ Servizio dalla cache');
-                return data.service;
-            }
+async getServiceBySlug(slug) {
+    const cacheKey = `service_${slug}`;
+    const cached = sessionStorage.getItem(cacheKey);
+    if (cached) {
+        const data = JSON.parse(cached);
+        if (Date.now() - data._cached < 3600000) {
+            console.log('✅ Servizio dalla cache');
+            return data.service;
         }
+    }
 
-        const service = await this.request(`/services/slug/${slug}`);
+    const service = await this.request(`/services/slug/${slug}`);
 
     if (service.artisan_id) {
-            try {
-                const artisan = await this.request(`/artisan/${service.artisan_id}`);
-                service._artisan = artisan;
+        try {
+            const artisan = await this.request(`/artisan/${service.artisan_id}`);
+            service._artisan = artisan;
 
-                console.log("👨‍🔧 Artigiano caricato:", artisan);
-                console.log("📅 Regole disponibilità RAW:", artisan._artisan_availability_rules_of_artisan);
+            console.log("👨‍🔧 Artigiano caricato:", artisan);
+            console.log("📅 Regole disponibilità RAW:", artisan._artisan_availability_rules_of_artisan);
 
-                if (artisan._artisan_availability_rules_of_artisan?.length > 0) {
-                    // DEBUG: Analizza la struttura dei daily_schedules
-                    artisan._artisan_availability_rules_of_artisan.forEach((rule, index) => {
-                        console.log(`📋 Regola ${index + 1}:`, {
-                            id: rule.id,
-                            start_date: rule.start_date,
-                            end_date: rule.end_date,
-                            daily_schedules: rule.daily_schedules,
-                            daily_schedules_type: typeof rule.daily_schedules,
-                            daily_schedules_length: rule.daily_schedules?.length,
-                            first_item: rule.daily_schedules?.[0],
-                            first_item_type: typeof rule.daily_schedules?.[0]
-                        });
-                    });
+            if (artisan._artisan_availability_rules_of_artisan?.length > 0) {
+                // DEBUG DETTAGLIATO
+                artisan._artisan_availability_rules_of_artisan.forEach((rule, index) => {
+                    console.log(`=== REGOLA ${index + 1} ===`);
+                    console.log("ID:", rule.id);
+                    console.log("Start Date:", rule.start_date);
+                    console.log("End Date:", rule.end_date);
+                    console.log("Daily Schedules:", rule.daily_schedules);
+                    console.log("Tipo Daily Schedules:", typeof rule.daily_schedules);
+                    console.log("=== FINE REGOLA ===");
+                });
 
-                    const today = new Date();
-                    today.setHours(0, 0, 0, 0);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
 
-                    const activeRule = artisan._artisan_availability_rules_of_artisan.find(rule => {
-                        const startDate = rule.start_date ? new Date(rule.start_date) : null;
-                        const endDate = rule.end_date ? new Date(rule.end_date) : null;
-                        
-                        if (startDate && endDate) {
-                            return today >= startDate && today <= endDate;
-                        } else if (startDate) {
-                            return today >= startDate;
-                        } else if (endDate) {
-                            return today <= endDate;
-                        }
-                        return true;
-                    });
-
-                    if (activeRule) {
-                        console.log("✅ Regola attiva trovata:", activeRule);
-                        service._availability = activeRule;
-                    } else {
-                        console.log("⚠️ Nessuna regola attiva trovata, uso la prima");
-                        service._availability = artisan._artisan_availability_rules_of_artisan[0];
+                const activeRule = artisan._artisan_availability_rules_of_artisan.find(rule => {
+                    const startDate = rule.start_date ? new Date(rule.start_date) : null;
+                    const endDate = rule.end_date ? new Date(rule.end_date) : null;
+                    
+                    if (startDate && endDate) {
+                        return today >= startDate && today <= endDate;
+                    } else if (startDate) {
+                        return today >= startDate;
+                    } else if (endDate) {
+                        return today <= endDate;
                     }
+                    return true;
+                });
+
+                if (activeRule) {
+                    console.log("✅ Regola attiva trovata:", activeRule);
+                    service._availability = activeRule;
                 } else {
-                    console.log("❌ Nessuna regola di disponibilità per l'artigiano");
-                    service._availability = null;
+                    console.log("⚠️ Nessuna regola attiva trovata, uso la prima");
+                    service._availability = artisan._artisan_availability_rules_of_artisan[0];
                 }
-            } catch (error) {
-                console.error("❌ Errore nel caricamento artigiano:", error);
+            } else {
+                console.log("❌ Nessuna regola di disponibilità per l'artigiano");
                 service._availability = null;
             }
+        } catch (error) {
+            console.error("❌ Errore nel caricamento artigiano:", error);
+            service._availability = null;
         }
+    }
 
-        sessionStorage.setItem(cacheKey, JSON.stringify({
-            service,
-            _cached: Date.now()
-        }));
+    sessionStorage.setItem(cacheKey, JSON.stringify({
+        service,
+        _cached: Date.now()
+    }));
 
-        return service;
-    },
+    return service;
+},
 
 
     async getSlots(serviceId, date) {
@@ -595,6 +592,7 @@ const CalendarManager = {
         }
     },
 
+    // MODIFICA il metodo getAvailabilityRules in CalendarManager
 getAvailabilityRules() {
     const availability = state.currentService._availability;
 
@@ -609,6 +607,8 @@ getAvailabilityRules() {
     }
 
     console.log("✅ Disponibilità artigiano:", availability);
+    console.log("🔍 daily_schedules RAW:", availability.daily_schedules);
+    console.log("🔍 Tipo di daily_schedules:", typeof availability.daily_schedules);
 
     const defaultDays = state.currentService.working_days || [];
     let specialDays = [];
@@ -625,41 +625,49 @@ getAvailabilityRules() {
         availEnd.setHours(23, 59, 59, 999);
     }
 
-    // CORREZIONE: Gestione della struttura complessa di daily_schedules
-    if (availability.daily_schedules && availability.daily_schedules.length > 0) {
-        console.log("📅 daily_schedules RAW:", availability.daily_schedules);
-        
+    // CORREZIONE MIGLIORATA: Gestione daily_schedules
+    if (availability.daily_schedules) {
         try {
-            // Se daily_schedules è una stringa JSON, parsala
             let schedules = availability.daily_schedules;
+            
+            // Se è una stringa, prova a parsarla
             if (typeof schedules === 'string') {
+                console.log("🔄 Parsing stringa JSON...");
                 schedules = JSON.parse(schedules);
             }
             
-            // Se è un array di array, appiattiscilo
-            if (Array.isArray(schedules) && schedules.length > 0) {
-                if (Array.isArray(schedules[0])) {
+            console.log("📅 Schedules dopo parsing:", schedules);
+            console.log("📅 Tipo dopo parsing:", typeof schedules);
+            
+            // Gestione struttura complessa
+            if (Array.isArray(schedules)) {
+                // Se è un array di array, appiattiscilo
+                if (schedules.length > 0 && Array.isArray(schedules[0])) {
+                    console.log("📅 Struttura: array di array");
                     schedules = schedules.flat();
                 }
                 
-                // Estrai i giorni disponibili
+                // Estrai i giorni
                 specialDays = schedules
                     .map(item => {
                         if (item && typeof item === 'object') {
+                            console.log("📅 Item trovato:", item);
                             return item.day;
                         }
                         return null;
                     })
-                    .filter(day => day && day !== 'undefined');
+                    .filter(day => day && day !== 'undefined' && day !== '');
+                
+                console.log("📅 Giorni estratti:", specialDays);
             }
-            
-            console.log("📅 Giorni disponibili speciali processati:", specialDays);
-            console.log("📅 Schedule completo:", schedules);
             
         } catch (error) {
             console.error("❌ Errore nel parsing di daily_schedules:", error);
+            console.error("❌ Contenuto che causa errore:", availability.daily_schedules);
         }
     }
+
+    console.log("📅 Giorni disponibili speciali processati:", specialDays);
 
     return {
         defaultDays: state.currentService.working_days || [],
@@ -670,48 +678,47 @@ getAvailabilityRules() {
 },
 
 
-
     isDaySelectable(date, today, dayOfWeekStr, defaultDays, specialDays, availStart, availEnd) {
-    // CORREZIONE: Usa il nuovo metodo di validazione
-    const dateIsInFuture = !Utils.isDateInPast(date);
-    if (!dateIsInFuture) {
-        console.log(`❌ ${Utils.formatDateDDMMYYYY(date)} - Data passata`);
-        return false;
-    }
-
-    // CORREZIONE: Logica migliorata per disponibilità
-    let currentAvailDays = defaultDays;
-    let isInSpecialRange = false;
-
-    // Verifica se siamo in un range speciale
-    if (availStart || availEnd) {
-        const checkDate = Utils.normalizeDate(date);
-        isInSpecialRange = true;
-        
-        if (availStart) {
-            const start = Utils.normalizeDate(availStart);
-            isInSpecialRange = isInSpecialRange && (checkDate >= start);
+        // CORREZIONE: Usa il nuovo metodo di validazione
+        const dateIsInFuture = !Utils.isDateInPast(date);
+        if (!dateIsInFuture) {
+            console.log(`❌ ${Utils.formatDateDDMMYYYY(date)} - Data passata`);
+            return false;
         }
-        
-        if (availEnd) {
-            const end = Utils.normalizeDate(availEnd);
-            isInSpecialRange = isInSpecialRange && (checkDate <= end);
+
+        // CORREZIONE: Logica migliorata per disponibilità
+        let currentAvailDays = defaultDays;
+        let isInSpecialRange = false;
+
+        // Verifica se siamo in un range speciale
+        if (availStart || availEnd) {
+            const checkDate = Utils.normalizeDate(date);
+            isInSpecialRange = true;
+
+            if (availStart) {
+                const start = Utils.normalizeDate(availStart);
+                isInSpecialRange = isInSpecialRange && (checkDate >= start);
+            }
+
+            if (availEnd) {
+                const end = Utils.normalizeDate(availEnd);
+                isInSpecialRange = isInSpecialRange && (checkDate <= end);
+            }
         }
-    }
 
-    // Se siamo in range speciale E abbiamo giorni speciali, usali
-    if (isInSpecialRange && specialDays.length > 0) {
-        currentAvailDays = specialDays;
-        console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} - Usa giorni speciali:`, specialDays);
-    } else {
-        console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} - Usa giorni default:`, defaultDays);
-    }
+        // Se siamo in range speciale E abbiamo giorni speciali, usali
+        if (isInSpecialRange && specialDays.length > 0) {
+            currentAvailDays = specialDays;
+            console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} - Usa giorni speciali:`, specialDays);
+        } else {
+            console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} - Usa giorni default:`, defaultDays);
+        }
 
-    const isAvailable = currentAvailDays.includes(dayOfWeekStr);
-    console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} (${dayOfWeekStr}) - Disponibile: ${isAvailable}`);
+        const isAvailable = currentAvailDays.includes(dayOfWeekStr);
+        console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} (${dayOfWeekStr}) - Disponibile: ${isAvailable}`);
 
-    return isAvailable;
-},
+        return isAvailable;
+    },
 
     createDayElement(day, dayOfWeekStr, date, isSelectable) {
         const dateDiv = document.createElement('div');
@@ -790,23 +797,30 @@ const HoursManager = {
     },
 
 
+    // AGGIORNA il metodo getAvailableHours in HoursManager
 getAvailableHours() {
     const hours = [];
     const availability = state.currentService._availability;
     const dayOfWeekStr = CONFIG.DAY_NAMES[(state.selectedDate.getDay() + 6) % 7];
 
+    console.log("🔍 Cerco orari per:", dayOfWeekStr);
+    console.log("🔍 Availability:", availability);
+
     // PRIMA cerca negli orari speciali della availability rule
     if (availability?.daily_schedules) {
-        console.log("🔍 Cerco orari speciali per:", dayOfWeekStr);
+        console.log("🔍 Cerco orari speciali in daily_schedules");
         
         try {
             let schedules = availability.daily_schedules;
+            
+            // Se è una stringa, parsala
             if (typeof schedules === 'string') {
                 schedules = JSON.parse(schedules);
             }
             
-            if (Array.isArray(schedules) && schedules.length > 0) {
-                if (Array.isArray(schedules[0])) {
+            // Gestione struttura complessa
+            if (Array.isArray(schedules)) {
+                if (schedules.length > 0 && Array.isArray(schedules[0])) {
                     schedules = schedules.flat();
                 }
                 
@@ -815,10 +829,15 @@ getAvailableHours() {
                     console.log("✅ Trovato orario speciale:", scheduleForDay);
                     const startHour = parseInt(scheduleForDay.start.split(':')[0]);
                     const endHour = parseInt(scheduleForDay.end.split(':')[0]);
+                    
+                    console.log(`🕒 Orari: ${startHour}:00 - ${endHour}:00`);
+                    
                     for (let h = startHour; h < endHour; h++) {
                         hours.push(h);
                     }
                     return hours;
+                } else {
+                    console.log("❌ Nessun orario speciale trovato per", dayOfWeekStr);
                 }
             }
         } catch (error) {
@@ -827,8 +846,12 @@ getAvailableHours() {
     }
 
     // ALTRIMENTI usa gli orari di default del servizio
+    console.log("🔍 Uso orari di default del servizio");
     const startHour = parseInt(state.currentService.working_hours_start.split(':')[0]);
     const endHour = parseInt(state.currentService.working_hours_end.split(':')[0]);
+    
+    console.log(`🕒 Orari default: ${startHour}:00 - ${endHour}:00`);
+    
     for (let h = startHour; h < endHour; h++) {
         hours.push(h);
     }
@@ -1389,7 +1412,7 @@ const ServiceLoader = {
             console.log(`🔄 Caricamento servizio: ${serviceSlug}`);
             state.currentService = await API.getServiceBySlug(serviceSlug);
             console.log("✅ Servizio caricato:", state.currentService);
-            
+
             state.selectedDate = null;
             state.selectedHour = null;
             state.currentDate = new Date();
@@ -1418,19 +1441,19 @@ function initializeEventListeners() {
         if (DOM.nextBtn.disabled) return;
         StepNavigation.next();
     });
-    
+
     DOM.backBtn?.addEventListener("click", () => {
         if (DOM.backBtn.disabled) return;
         StepNavigation.back();
     });
-    
+
     let calendarInitialized = false;
-    
+
     DOM.prevMonthBtn?.addEventListener('click', (e) => {
         e.stopPropagation();
         CalendarManager.changeMonth(-1);
     });
-    
+
     DOM.nextMonthBtn?.addEventListener('click', (e) => {
         e.stopPropagation();
         CalendarManager.changeMonth(1);
@@ -1441,7 +1464,7 @@ function initializeEventListeners() {
         btn.addEventListener('click', async (e) => {
             e.preventDefault();
             e.stopPropagation();
-            
+
             const serviceSlug = btn.dataset.serviceSlug;
             console.log(`🎯 Click su servizio: ${serviceSlug}`);
 
@@ -1460,10 +1483,10 @@ function initializeEventListeners() {
 
     const debouncedUpdate = Utils.debounce(() => PricingManager.update(), 300);
     DOM.numInput?.addEventListener('input', debouncedUpdate);
-    
+
     const checkbox = DOM.extrasContainer?.querySelector("input[type='checkbox']");
     checkbox?.addEventListener('change', () => PricingManager.update());
-    
+
     DOM.gdprCheckbox?.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
