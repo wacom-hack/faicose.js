@@ -898,35 +898,36 @@ const HoursManager = {
     },
 
 
-async getAllArtisanSlotsForDate(artisanId, date) {
-    try {
-        const dateStr = Utils.formatDateISO(date);
-        console.log(`📡 Caricamento prenotazioni artigiano ${artisanId} per ${dateStr}`);
-        
-        const bookings = await API.request(`/api/artisan_bookings?artisan_id=${artisanId}&date=${dateStr}`);
-        console.log(`🎯 Prenotazioni artigiano trovate: ${bookings.length}`, bookings);
-        
-        // Estrai gli slot dalle prenotazioni
-        const artisanSlots = bookings.map(booking => ({
-            id: booking.slot_id,
-            start_time: booking.slot_start_time,
-            end_time: booking.slot_end_time,
-            service_id: booking.service_id, // Per debug
-            _service: { // Per compatibilità con il codice esistente
-                id: booking.service_id,
-                name: booking.service_name,
-                artisan_id: artisanId
-            }
-        }));
-        
-        console.log(`📊 Slot occupati artigiano: ${artisanSlots.length}`);
-        return artisanSlots;
-        
-    } catch (error) {
-        console.error("❌ Errore caricamento prenotazioni artigiano:", error);
-        return [];
+    async getAllArtisanSlotsForDate(artisanId, date) {
+        try {
+            const dateStr = Utils.formatDateISO(date);
+            console.log(`📡 Caricamento prenotazioni artigiano ${artisanId} per ${dateStr}`);
+
+            // 🔥 CORREGGI: Chiama il NUOVO endpoint
+            const bookings = await API.request(`/api/artisan_bookings?artisan_id=${artisanId}&date=${dateStr}`);
+            console.log(`🎯 Prenotazioni artigiano trovate: ${bookings.length}`, bookings);
+
+            // Estrai gli slot dalle prenotazioni
+            const artisanSlots = bookings.map(booking => ({
+                id: booking.slot_id,
+                start_time: booking.slot_start_time, // Usa slot_start_time invece di start_time
+                end_time: booking.slot_end_time,     // Usa slot_end_time invece di end_time
+                service_id: booking.service_id,
+                _service: {
+                    id: booking.service_id,
+                    name: booking.service_name,
+                    artisan_id: artisanId
+                }
+            }));
+
+            console.log(`📊 Slot occupati artigiano: ${artisanSlots.length}`);
+            return artisanSlots;
+
+        } catch (error) {
+            console.error("❌ Errore caricamento prenotazioni artigiano:", error);
+            return [];
+        }
     }
-},
 
     // AGGIUNGI questo metodo di debug per verificare le date
     debugBookingDates(allBookings, targetDateStr) {
