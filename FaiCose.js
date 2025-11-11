@@ -366,9 +366,9 @@ const API = {
 
         console.error('❌ Formato risposta Stripe non riconosciuto:', response);
         throw new Error('Risposta Stripe non valida: URL mancante');
-    }, 
+    },
 
-     async getServiceBookings(serviceId, date, hour) {
+    async getServiceBookings(serviceId, date, hour) {
         const dateStr = Utils.formatDateISO(date);
         const timestamp = Utils.createTimestamp(date, hour) / 1000;
         return await this.request(`/bookings?service_id=${serviceId}&date=${dateStr}&start_time=${timestamp}`);
@@ -741,141 +741,142 @@ const CalendarManager = {
 // HOURS MANAGER
 const HoursManager = {
     async render() {
-    if (!DOM.hoursGrid || !state.currentService || !state.selectedDate) {
-        DOM.hoursGrid.innerHTML = '';
-        return;
-    }
-
-    DOM.hoursGrid.innerHTML = '<p style="text-align: center; width: 100%;">Caricamento orari...</p>';
-
-    try {
-        const hours = this.getAvailableHours();
-
-        console.log("🔍 Ore disponibili calcolate:", hours);
-
-        if (hours.length === 0) {
-            DOM.hoursGrid.innerHTML = '<p style="text-align: center; width: 100%;">Nessun orario disponibile per questa data.</p>';
-            this.disableNextButton();
+        if (!DOM.hoursGrid || !state.currentService || !state.selectedDate) {
+            DOM.hoursGrid.innerHTML = '';
             return;
         }
 
-        const slots = await this.loadSlots();
+        DOM.hoursGrid.innerHTML = '<p style="text-align: center; width: 100%;">Caricamento orari...</p>';
 
-        DOM.hoursGrid.innerHTML = '';
-        let firstAvailableHour = null;
+        try {
+            const hours = this.getAvailableHours();
 
-        for (const hour of hours) {
-            const btn = this.createHourButton(hour, slots);
-
-            if (!btn.disabled && firstAvailableHour === null) {
-                firstAvailableHour = hour;
+            if (hours.length === 0) {
+                DOM.hoursGrid.innerHTML = '<p style="text-align: center; width: 100%;">Nessun orario disponibile per questa data.</p>';
+                this.disableNextButton();
+                return;
             }
 
-            DOM.hoursGrid.appendChild(btn);
-        }
+            const slots = await this.loadSlots();
+            
+            // NUOVO: Pre-carica le informazioni di occupazione dell'artigiano
+            const artisanBusyInfo = await this.preloadArtisanBusyInfo(hours);
 
-        if (firstAvailableHour !== null) {
-            this.selectHour(firstAvailableHour);
-        } else {
-            console.warn("⚠️ Tutti gli slot sono pieni per le ore:", hours);
+            DOM.hoursGrid.innerHTML = '';
+            let firstAvailableHour = null;
+
+            for (const hour of hours) {
+                const isArtisanBusy = artisanBusyInfo[hour] || false;
+                const btn = this.createHourButton(hour, slots, isArtisanBusy);
+
+                if (!btn.disabled && firstAvailableHour === null) {
+                    firstAvailableHour = hour;
+                }
+
+                DOM.hoursGrid.appendChild(btn);
+            }
+
+            if (firstAvailableHour !== null) {
+                this.selectHour(firstAvailableHour);
+            } else {
+                this.disableNextButton();
+            }
+
+        } catch (error) {
+            console.error('Errore nel caricamento degli orari:', error);
+            DOM.hoursGrid.innerHTML = '<p style="text-align: center; width: 100%; color: red;">Errore nel caricare gli slot.</p>';
             this.disableNextButton();
         }
-
-    } catch (error) {
-        console.error('Errore nel caricamento degli orari:', error);
-        DOM.hoursGrid.innerHTML = '<p style="text-align: center; width: 100%; color: red;">Errore nel caricare gli slot.</p>';
-        this.disableNextButton();
-    }
-},
+    },
 
 
     // CORREZIONE COMPLETA del metodo getAvailableHours
-getAvailableHours() {
-    const hours = [];
-    const availability = state.currentService._availability;
-    const dayOfWeekStr = CONFIG.DAY_NAMES[(state.selectedDate.getDay() + 6) % 7];
+    getAvailableHours() {
+        const hours = [];
+        const availability = state.currentService._availability;
+        const dayOfWeekStr = CONFIG.DAY_NAMES[(state.selectedDate.getDay() + 6) % 7];
 
-    console.log("🔍 Cerco orari per:", dayOfWeekStr);
+        console.log("🔍 Cerco orari per:", dayOfWeekStr);
 
-    // PRIMA cerca negli orari speciali della availability rule
-    if (availability?.daily_schedules) {
-        console.log("🔍 Cerco orari speciali in daily_schedules");
-        
-        try {
-            let schedules = availability.daily_schedules;
-            
-            // Gestione struttura complessa (array di array)
-            if (Array.isArray(schedules) && schedules.length > 0) {
-                if (Array.isArray(schedules[0])) {
-                    schedules = schedules.flat();
+        // PRIMA cerca negli orari speciali della availability rule
+        if (availability?.daily_schedules) {
+            console.log("🔍 Cerco orari speciali in daily_schedules");
+
+            try {
+                let schedules = availability.daily_schedules;
+
+                // Gestione struttura complessa (array di array)
+                if (Array.isArray(schedules) && schedules.length > 0) {
+                    if (Array.isArray(schedules[0])) {
+                        schedules = schedules.flat();
+                    }
+
+                    const scheduleForDay = schedules.find(s => s && s.day === dayOfWeekStr);
+                    if (scheduleForDay) {
+                        console.log("✅ Trovato orario speciale:", scheduleForDay);
+
+                        // CORREZIONE: Gestione corretta degli orari
+                        let startHour = parseInt(scheduleForDay.start.split(':')[0]);
+                        let endHour = parseInt(scheduleForDay.end.split(':')[0]);
+
+                        console.log(`🕒 Orari originali: ${startHour}:00 - ${endHour}:00`);
+
+                        // CORREZIONE: Se end < start, probabilmente è un errore di inserimento
+                        // Inverto start e end per correggere
+                        if (endHour <= startHour) {
+                            console.warn("⚠️ Orari apparentemente invertiti, correggo:", `${startHour}:00 - ${endHour}:00`, "→", `${endHour}:00 - ${startHour}:00`);
+                            [startHour, endHour] = [endHour, startHour];
+                        }
+
+                        console.log(`🕒 Orari corretti: ${startHour}:00 - ${endHour}:00`);
+
+                        // Genera le ore disponibili
+                        for (let h = startHour; h < endHour; h++) {
+                            hours.push(h);
+                        }
+
+                        console.log("📅 Ore generate:", hours);
+
+                        if (hours.length === 0) {
+                            console.warn("⚠️ Nessuna ora generata - controlla gli orari");
+                        }
+
+                        return hours;
+                    } else {
+                        console.log("❌ Nessun orario speciale trovato per", dayOfWeekStr);
+                    }
                 }
-                
-                const scheduleForDay = schedules.find(s => s && s.day === dayOfWeekStr);
-                if (scheduleForDay) {
-                    console.log("✅ Trovato orario speciale:", scheduleForDay);
-                    
-                    // CORREZIONE: Gestione corretta degli orari
-                    let startHour = parseInt(scheduleForDay.start.split(':')[0]);
-                    let endHour = parseInt(scheduleForDay.end.split(':')[0]);
-                    
-                    console.log(`🕒 Orari originali: ${startHour}:00 - ${endHour}:00`);
-                    
-                    // CORREZIONE: Se end < start, probabilmente è un errore di inserimento
-                    // Inverto start e end per correggere
-                    if (endHour <= startHour) {
-                        console.warn("⚠️ Orari apparentemente invertiti, correggo:", `${startHour}:00 - ${endHour}:00`, "→", `${endHour}:00 - ${startHour}:00`);
-                        [startHour, endHour] = [endHour, startHour];
-                    }
-                    
-                    console.log(`🕒 Orari corretti: ${startHour}:00 - ${endHour}:00`);
-                    
-                    // Genera le ore disponibili
-                    for (let h = startHour; h < endHour; h++) {
-                        hours.push(h);
-                    }
-                    
-                    console.log("📅 Ore generate:", hours);
-                    
-                    if (hours.length === 0) {
-                        console.warn("⚠️ Nessuna ora generata - controlla gli orari");
-                    }
-                    
-                    return hours;
-                } else {
-                    console.log("❌ Nessun orario speciale trovato per", dayOfWeekStr);
-                }
+            } catch (error) {
+                console.error("❌ Errore nel parsing orari speciali:", error);
             }
-        } catch (error) {
-            console.error("❌ Errore nel parsing orari speciali:", error);
         }
-    }
 
-    // ALTRIMENTI usa gli orari di default del servizio
-    console.log("🔍 Uso orari di default del servizio");
-    const startHour = parseInt(state.currentService.working_hours_start.split(':')[0]);
-    const endHour = parseInt(state.currentService.working_hours_end.split(':')[0]);
-    
-    console.log(`🕒 Orari default: ${startHour}:00 - ${endHour}:00`);
-    
-    // Validazione orari default
-    if (startHour < endHour) {
-        for (let h = startHour; h < endHour; h++) {
-            hours.push(h);
-        }
-    } else {
-        console.error("❌ Orari default non validi:", startHour, endHour);
-        // CORREZIONE: Anche per i default, se sono invertiti, correggi
-        if (endHour < startHour) {
-            console.warn("⚠️ Orari default invertiti, correggo");
-            for (let h = endHour; h < startHour; h++) {
+        // ALTRIMENTI usa gli orari di default del servizio
+        console.log("🔍 Uso orari di default del servizio");
+        const startHour = parseInt(state.currentService.working_hours_start.split(':')[0]);
+        const endHour = parseInt(state.currentService.working_hours_end.split(':')[0]);
+
+        console.log(`🕒 Orari default: ${startHour}:00 - ${endHour}:00`);
+
+        // Validazione orari default
+        if (startHour < endHour) {
+            for (let h = startHour; h < endHour; h++) {
                 hours.push(h);
             }
+        } else {
+            console.error("❌ Orari default non validi:", startHour, endHour);
+            // CORREZIONE: Anche per i default, se sono invertiti, correggi
+            if (endHour < startHour) {
+                console.warn("⚠️ Orari default invertiti, correggo");
+                for (let h = endHour; h < startHour; h++) {
+                    hours.push(h);
+                }
+            }
         }
-    }
 
-    console.log("📅 Ore generate (default):", hours);
-    return hours;
-},
+        console.log("📅 Ore generate (default):", hours);
+        return hours;
+    },
 
 
     async loadSlots() {
@@ -888,18 +889,22 @@ getAvailableHours() {
         CacheManager.set(state.currentService.id, state.selectedDate, slots);
         return slots;
     },
- async preloadArtisanBusyInfo(hours) {
-        const busyInfo = {};
-        
-        if (!state.currentService?._artisan?._services_of_artisan) {
-            console.log("❌ Nessuna info servizi artigiano disponibile");
-            return busyInfo;
-        }
-        
-        const artisanServices = state.currentService._artisan._services_of_artisan;
-        const currentServiceId = state.currentService.id;
-        
-        console.log("🔍 Servizi dell'artigiano:", artisanServices);
+
+    async preloadArtisanBusyInfo(hours) {
+           const busyInfo = {};
+    
+    // USA IL NOME CORRETTO DELL'ADDON
+    if (!state.currentService?._artisan?._service_of_artisan_2) { // ⬅️ CORRETTO
+        console.log("❌ Nessuna info servizi artigiano disponibile");
+        console.log("🔍 Artigiano:", state.currentService?._artisan);
+        console.log("🔍 Chiavi artigiano:", state.currentService?._artisan ? Object.keys(state.currentService._artisan) : "Nessun artigiano");
+        return busyInfo;
+    }
+    
+    const artisanServices = state.currentService._artisan._service_of_artisan_2; // ⬅️ CORRETTO
+    const currentServiceId = state.currentService.id;
+    
+    console.log("📦 Servizi dell'artigiano:", artisanServices.map(s => `${s.name} (ID: ${s.id})`));
         
         // Filtra gli altri servizi (escludi quello corrente)
         const otherServices = artisanServices.filter(service => service.id !== currentServiceId);
@@ -909,7 +914,7 @@ getAvailableHours() {
             return busyInfo;
         }
         
-        console.log(`🔍 Verifico ${otherServices.length} altri servizi per conflitti`);
+        console.log(`🔍 Verifico ${otherServices.length} altri servizi per conflitti:`, otherServices.map(s => s.name));
         
         // Per ogni ora, verifica se ci sono prenotazioni negli altri servizi
         const promises = hours.map(async (hour) => {
@@ -932,19 +937,22 @@ getAvailableHours() {
         console.log("📅 Info occupazione artigiano:", busyInfo);
         return busyInfo;
     },
-    
-    async checkArtisanConflicts(otherServices, hour) {
+
+async checkArtisanConflicts(otherServices, hour) {
         const timestamp = Utils.createTimestamp(state.selectedDate, hour) / 1000;
         const dateStr = Utils.formatDateISO(state.selectedDate);
+        
+        console.log(`🔍 Verifico conflitti per ${hour}:00 (timestamp: ${timestamp})`);
         
         // Verifica ogni servizio in parallelo
         const promises = otherServices.map(async (service) => {
             try {
+                console.log(`🔍 Verifico servizio "${service.name}" (ID: ${service.id}) alle ${hour}:00`);
                 const bookings = await API.getServiceBookings(service.id, state.selectedDate, hour);
                 const hasBooking = bookings && bookings.length > 0;
                 
                 if (hasBooking) {
-                    console.log(`🚫 Conflitto trovato: servizio "${service.name}" ha prenotazioni alle ${hour}:00`);
+                    console.log(`🚫 CONFLITTO TROVATO: servizio "${service.name}" ha ${bookings.length} prenotazioni alle ${hour}:00`);
                 }
                 
                 return hasBooking;
@@ -957,7 +965,10 @@ getAvailableHours() {
         const results = await Promise.all(promises);
         
         // Se almeno un servizio ha prenotazioni, c'è conflitto
-        return results.some(hasBooking => hasBooking);
+        const hasConflict = results.some(hasBooking => hasBooking);
+        console.log(`🔍 Risultato finale conflitto per ${hour}:00:`, hasConflict);
+        
+        return hasConflict;
     },
 
     // AGGIUNGI questo debug nel metodo createHourButton
@@ -1506,6 +1517,7 @@ const BookingManager = {
 
 // SERVICE LOADER
 
+// CORREGGI il ServiceLoader
 const ServiceLoader = {
     async load(serviceSlug) {
         try {
@@ -1513,15 +1525,17 @@ const ServiceLoader = {
             state.currentService = await API.getServiceBySlug(serviceSlug);
             console.log("✅ Servizio caricato:", state.currentService);
             
-            // DEBUG: Verifica dati artigiano e servizi
+            // DEBUG: Verifica il nuovo addon - CORREGGI IL NOME DELLA PROPRIETÀ
             if (state.currentService._artisan) {
                 console.log("👨‍🔧 Artigiano:", state.currentService._artisan);
-                console.log("📦 Servizi artigiano:", state.currentService._artisan._services_of_artisan);
+                console.log("📦 Servizi artigiano (_service_of_artisan_2):", state.currentService._artisan._service_of_artisan_2); // ⬅️ CORRETTO
                 
-                if (state.currentService._artisan._services_of_artisan) {
-                    const otherServices = state.currentService._artisan._services_of_artisan
+                if (state.currentService._artisan._service_of_artisan_2) { // ⬅️ CORRETTO
+                    const otherServices = state.currentService._artisan._service_of_artisan_2 // ⬅️ CORRETTO
                         .filter(s => s.id !== state.currentService.id);
-                    console.log(`🔍 ${otherServices.length} altri servizi dell'artigiano:`, otherServices);
+                    console.log(`🔍 ${otherServices.length} altri servizi dell'artigiano:`, otherServices.map(s => `${s.name} (ID: ${s.id})`));
+                } else {
+                    console.log("❌ _service_of_artisan_2 non trovato, chiavi disponibili:", Object.keys(state.currentService._artisan));
                 }
             }
             
