@@ -899,75 +899,31 @@ const HoursManager = {
 
 
 async getAllArtisanSlotsForDate(artisanId, date) {
-    const dateStr = Utils.formatDateISO(date);
-    console.log(`🎯 DEBUG TOTALE per data: "${dateStr}"`);
-    
     try {
-        // 1. Carica tutte le prenotazioni
-        const allBookings = await API.getAllBookings();
-        console.log("📊 Totale prenotazioni API:", allBookings.length);
+        const dateStr = Utils.formatDateISO(date);
+        console.log(`📡 Caricamento prenotazioni artigiano ${artisanId} per ${dateStr}`);
         
-        // 2. DEBUG: Analizza TUTTE le date
-        console.log("🔍 ANALIZZO TUTTE LE DATE:");
-        let foundCount = 0;
+        const bookings = await API.request(`/api/artisan_bookings?artisan_id=${artisanId}&date=${dateStr}`);
+        console.log(`🎯 Prenotazioni artigiano trovate: ${bookings.length}`, bookings);
         
-        allBookings.forEach((booking, index) => {
-            if (booking && booking.date) {
-                const rawDate = booking.date;
-                const rawType = typeof rawDate;
-                let normalizedDate;
-                
-                if (rawType === 'string') {
-                    normalizedDate = rawDate.trim();
-                } else {
-                    try {
-                        normalizedDate = Utils.formatDateISO(new Date(rawDate));
-                    } catch (e) {
-                        normalizedDate = 'ERROR';
-                    }
-                }
-                
-                const isMatch = normalizedDate === dateStr;
-                if (isMatch) foundCount++;
-                
-                console.log(`${isMatch ? '🎯🎯🎯' : '     '} ${index}. ID:${booking.id}, Raw: "${rawDate}" (${rawType}) → Normalized: "${normalizedDate}", Match: ${isMatch}`);
+        // Estrai gli slot dalle prenotazioni
+        const artisanSlots = bookings.map(booking => ({
+            id: booking.slot_id,
+            start_time: booking.slot_start_time,
+            end_time: booking.slot_end_time,
+            service_id: booking.service_id, // Per debug
+            _service: { // Per compatibilità con il codice esistente
+                id: booking.service_id,
+                name: booking.service_name,
+                artisan_id: artisanId
             }
-        });
+        }));
         
-        console.log(`📈 Trovate ${foundCount} prenotazioni per "${dateStr}"`);
-        
-        // 3. Filtro SEMPLIFICATO ma FUNZIONANTE
-        const targetBookings = allBookings.filter(booking => {
-            if (!booking || !booking.date) return false;
-            
-            const rawDate = String(booking.date);
-            return rawDate.includes('2025-12-12'); // 🔥 FORZA il match
-        });
-        
-        console.log(`🎯 Prenotazioni con filtro semplificato: ${targetBookings.length}`);
-        
-        if (targetBookings.length === 0) {
-            console.log("❌ CRITICO: Nessuna prenotazione trovata nemmeno con filtro semplificato!");
-            return [];
-        }
-        
-        // 4. Procedi con il resto della logica...
-        const slotIds = [...new Set(targetBookings.map(b => b.slot_id).filter(id => id && id !== 0))];
-        console.log("🎯 Slot IDs:", slotIds);
-        
-        const busySlots = [];
-        for (const slotId of slotIds) {
-            const slot = await this.getSlotWithService(slotId);
-            if (slot && slot._service && slot._service.artisan_id === artisanId) {
-                busySlots.push(slot);
-            }
-        }
-        
-        console.log(`📊 Slot occupati finale: ${busySlots.length}`);
-        return busySlots;
+        console.log(`📊 Slot occupati artigiano: ${artisanSlots.length}`);
+        return artisanSlots;
         
     } catch (error) {
-        console.error("❌ Errore:", error);
+        console.error("❌ Errore caricamento prenotazioni artigiano:", error);
         return [];
     }
 },
