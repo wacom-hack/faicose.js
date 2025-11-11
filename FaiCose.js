@@ -896,41 +896,42 @@ const HoursManager = {
         return busyInfo;
     },
 
-    async getAllArtisanSlotsForDate(artisanId, date) {
-        try {
-            const dateStr = Utils.formatDateISO(date);
-            console.log(`🎯 DEBUG: Chiamando /api/artisan_bookings?artisan_id=${artisanId}&date=${dateStr}`);
-            
-            const bookings = await API.request(`/api/artisan_bookings?artisan_id=${artisanId}&date=${dateStr}`);
-            console.log("✅ Risposta endpoint:", bookings);
-            
-            if (!bookings || !Array.isArray(bookings)) {
-                console.error("❌ Risposta non valida:", bookings);
-                return [];
-            }
-
-            console.log(`🎯 Prenotazioni trovate: ${bookings.length}`);
-            
-            const artisanSlots = bookings.map(booking => ({
-                id: booking.slot_id,
-                start_time: booking.slot_start_time,
-                end_time: booking.slot_end_time,
-                service_id: booking.service_id,
-                _service: {
-                    id: booking.service_id,
-                    name: booking.service_name,
-                    artisan_id: artisanId
-                }
-            }));
-
-            console.log("📦 Slot elaborati:", artisanSlots);
-            return artisanSlots;
-
-        } catch (error) {
-            console.error("❌ Errore completo:", error);
+async getAllArtisanSlotsForDate(artisanId, date) {
+    try {
+        const dateStr = Utils.formatDateISO(date);
+        console.log(`🎯 DEBUG: Chiamando endpoint artisan_bookings?artisan_id=${artisanId}&date=${dateStr}`);
+        
+        // 🔥 CORREGGI: Rimuovi /api/ dal path
+        const bookings = await API.request(`/artisan_bookings?artisan_id=${artisanId}&date=${dateStr}`);
+        console.log("✅ Risposta endpoint:", bookings);
+        
+        if (!bookings || !Array.isArray(bookings)) {
+            console.error("❌ Risposta non valida:", bookings);
             return [];
         }
-    },
+
+        console.log(`🎯 Prenotazioni trovate: ${bookings.length}`);
+        
+        const artisanSlots = bookings.map(booking => ({
+            id: booking.slot_id,
+            start_time: booking.slot_start_time,
+            end_time: booking.slot_end_time,
+            service_id: booking.service_id,
+            _service: {
+                id: booking.service_id,
+                name: booking.service_name,
+                artisan_id: artisanId
+            }
+        }));
+
+        console.log("📦 Slot elaborati:", artisanSlots);
+        return artisanSlots;
+
+    } catch (error) {
+        console.error("❌ Errore completo:", error);
+        return [];
+    }
+},
 
     isArtisanBusyInHour(artisanSlots, hour) {
         console.log(`🔍 Verifica ${artisanSlots.length} slot per le ${hour}:00`);
