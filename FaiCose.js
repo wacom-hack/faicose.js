@@ -190,6 +190,24 @@ const Utils = {
 
     isValidEmail(email) {
         return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    },
+
+    isDateInPast(date) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const checkDate = new Date(date);
+        checkDate.setHours(0, 0, 0, 0);
+        return checkDate < today;
+    },
+
+    // CORREZIONE: Normalizzazione data più robusta
+    normalizeDate(date) {
+        if (!(date instanceof Date)) {
+            date = new Date(date);
+        }
+        const normalized = new Date(date);
+        normalized.setHours(0, 0, 0, 0);
+        return normalized;
     }
 };
 
@@ -198,7 +216,6 @@ const Utils = {
 const API = {
     async request(endpoint, options = {}) {
         const url = `${CONFIG.API_BASE_URL}${endpoint}`;
-
 
         if (!CONFIG.RATE_LIMIT.canMakeRequest()) {
             const waitTime = CONFIG.RATE_LIMIT.getWaitTime();
@@ -244,77 +261,83 @@ const API = {
     },
 
 
-    async getServiceBySlug(slug) {
-    const cacheKey = `service_${slug}`;
-    const cached = sessionStorage.getItem(cacheKey);
-    if (cached) {
-        const data = JSON.parse(cached);
-        if (Date.now() - data._cached < 3600000) {
-            console.log('✅ Servizio dalla cache');
-            return data.service;
+        async getServiceBySlug(slug) {
+        const cacheKey = `service_${slug}`;
+        const cached = sessionStorage.getItem(cacheKey);
+        if (cached) {
+            const data = JSON.parse(cached);
+            if (Date.now() - data._cached < 3600000) {
+                console.log('✅ Servizio dalla cache');
+                return data.service;
+            }
         }
-    }
-    
-    const service = await this.request(`/services/slug/${slug}`);
-    
+
+        const service = await this.request(`/services/slug/${slug}`);
+
     if (service.artisan_id) {
-        try {
-            const artisan = await this.request(`/artisan/${service.artisan_id}`);
-            service._artisan = artisan;
+            try {
+                const artisan = await this.request(`/artisan/${service.artisan_id}`);
+                service._artisan = artisan;
 
-            console.log("👨‍🔧 Artigiano caricato:", artisan);
-            console.log("📅 Regole disponibilità:", artisan._artisan_availability_rules_of_artisan);
+                console.log("👨‍🔧 Artigiano caricato:", artisan);
+                console.log("📅 Regole disponibilità RAW:", artisan._artisan_availability_rules_of_artisan);
 
-            if (artisan._artisan_availability_rules_of_artisan?.length > 0) {
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
+                if (artisan._artisan_availability_rules_of_artisan?.length > 0) {
+                    // DEBUG: Analizza la struttura dei daily_schedules
+                    artisan._artisan_availability_rules_of_artisan.forEach((rule, index) => {
+                        console.log(`📋 Regola ${index + 1}:`, {
+                            id: rule.id,
+                            start_date: rule.start_date,
+                            end_date: rule.end_date,
+                            daily_schedules: rule.daily_schedules,
+                            daily_schedules_type: typeof rule.daily_schedules,
+                            daily_schedules_length: rule.daily_schedules?.length,
+                            first_item: rule.daily_schedules?.[0],
+                            first_item_type: typeof rule.daily_schedules?.[0]
+                        });
+                    });
 
-                const activeRule = artisan._artisan_availability_rules_of_artisan.find(rule => {
-                    const startDate = rule.start_date ? new Date(rule.start_date) : null;
-                    const endDate = rule.end_date ? new Date(rule.end_date) : null;
-                    
-                    if (startDate && endDate) {
-                        return today >= startDate && today <= endDate;
-                    } else if (startDate) {
-                        return today >= startDate;
-                    } else if (endDate) {
-                        return today <= endDate;
-                    }
-                    return true; 
-                });
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
 
-                if (activeRule) {
-                    console.log("✅ Regola attiva trovata:", activeRule);
-                    service._availability = activeRule;
-                    
-
-                    if (activeRule.daily_schedules) {
-                        if (Array.isArray(activeRule.daily_schedules)) {
-                            activeRule.daily_schedules = activeRule.daily_schedules.flat();
+                    const activeRule = artisan._artisan_availability_rules_of_artisan.find(rule => {
+                        const startDate = rule.start_date ? new Date(rule.start_date) : null;
+                        const endDate = rule.end_date ? new Date(rule.end_date) : null;
+                        
+                        if (startDate && endDate) {
+                            return today >= startDate && today <= endDate;
+                        } else if (startDate) {
+                            return today >= startDate;
+                        } else if (endDate) {
+                            return today <= endDate;
                         }
-                        console.log("📅 Schedule normalizzato:", activeRule.daily_schedules);
+                        return true;
+                    });
+
+                    if (activeRule) {
+                        console.log("✅ Regola attiva trovata:", activeRule);
+                        service._availability = activeRule;
+                    } else {
+                        console.log("⚠️ Nessuna regola attiva trovata, uso la prima");
+                        service._availability = artisan._artisan_availability_rules_of_artisan[0];
                     }
                 } else {
-                    console.log("⚠️ Nessuna regola attiva trovata, uso la prima");
-                    service._availability = artisan._artisan_availability_rules_of_artisan[0];
+                    console.log("❌ Nessuna regola di disponibilità per l'artigiano");
+                    service._availability = null;
                 }
-            } else {
-                console.log("❌ Nessuna regola di disponibilità per l'artigiano");
+            } catch (error) {
+                console.error("❌ Errore nel caricamento artigiano:", error);
                 service._availability = null;
             }
-        } catch (error) {
-            console.error("❌ Errore nel caricamento artigiano:", error);
-            service._availability = null;
         }
-    }
 
-    sessionStorage.setItem(cacheKey, JSON.stringify({
-        service,
-        _cached: Date.now()
-    }));
-    
-    return service;
-},
+        sessionStorage.setItem(cacheKey, JSON.stringify({
+            service,
+            _cached: Date.now()
+        }));
+
+        return service;
+    },
 
 
     async getSlots(serviceId, date) {
@@ -497,23 +520,23 @@ const StepNavigation = {
 // CALENDAR MANAGER
 
 const CalendarManager = {
-  selectDate(date) {
-    state.selectedDate = date;
-    state.selectedHour = null;
+    selectDate(date) {
+        state.selectedDate = date;
+        state.selectedHour = null;
 
-    this.render();
-    HoursManager.render();
+        this.render();
+        HoursManager.render();
 
-    // Aggiorna input persone e pricing
-    if (DOM.numInput && state.currentService?.max_capacity_per_slot) {
-        DOM.numInput.setAttribute('max', state.currentService.max_capacity_per_slot);
-        DOM.numInput.setAttribute('title', `Seleziona tra 1 e ${state.currentService.max_capacity_per_slot} persone`);
-        PricingManager.update();
-    }
-},
+        // Aggiorna input persone e pricing
+        if (DOM.numInput && state.currentService?.max_capacity_per_slot) {
+            DOM.numInput.setAttribute('max', state.currentService.max_capacity_per_slot);
+            DOM.numInput.setAttribute('title', `Seleziona tra 1 e ${state.currentService.max_capacity_per_slot} persone`);
+            PricingManager.update();
+        }
+    },
 
 
-    render() { 
+    render() {
         if (!DOM.calendarGrid || !state.currentService) return;
 
         DOM.calendarGrid.innerHTML = '';
@@ -572,821 +595,850 @@ const CalendarManager = {
         }
     },
 
-        getAvailabilityRules() {
-            const availability = state.currentService._availability;
+    getAvailabilityRules() {
+    const availability = state.currentService._availability;
 
-            if (!availability) {
-                console.log("❌ Nessuna disponibilità trovata per l'artigiano");
-                return {
-                    defaultDays: state.currentService.working_days || [],
-                    specialDays: [],
-                    availStart: null,
-                    availEnd: null
-                };
-            }
+    if (!availability) {
+        console.log("❌ Nessuna disponibilità trovata per l'artigiano");
+        return {
+            defaultDays: state.currentService.working_days || [],
+            specialDays: [],
+            availStart: null,
+            availEnd: null
+        };
+    }
 
-            console.log("✅ Disponibilità artigiano:", availability);
+    console.log("✅ Disponibilità artigiano:", availability);
 
-            const defaultDays = state.currentService.working_days || [];
-            let availStart = null;
-            let availEnd = null;
+    const defaultDays = state.currentService.working_days || [];
+    let specialDays = []; // RIMUOVI le dichiarazioni duplicate
+    let availStart = null;
+    let availEnd = null;
 
-            if (availability.start_date) {
-                availStart = new Date(availability.start_date);
-                availStart.setHours(0, 0, 0, 0);
-            }
+    if (availability.start_date) {
+        availStart = new Date(availability.start_date);
+        availStart.setHours(0, 0, 0, 0);
+    }
 
-            if (availability.end_date) {
-                availEnd = new Date(availability.end_date);
-                availEnd.setHours(23, 59, 59, 999);
-            }
+    if (availability.end_date) {
+        availEnd = new Date(availability.end_date);
+        availEnd.setHours(23, 59, 59, 999);
+    }
 
-            let specialDays = [];
-            if (availability.daily_schedules && availability.daily_schedules.length > 0) {
-                if (typeof availability.daily_schedules[0] === 'object') {
-                    specialDays = availability.daily_schedules.map(d => d.day);
-                }
+    if (availability.daily_schedules && availability.daily_schedules.length > 0) {
+        // Se daily_schedules è un array di stringhe (nomi giorni)
+        if (typeof availability.daily_schedules[0] === 'string') {
+            specialDays = availability.daily_schedules.filter(day => day && day !== 'undefined');
+        }
+        // Se daily_schedules è un array di oggetti
+        else if (typeof availability.daily_schedules[0] === 'object') {
+            specialDays = availability.daily_schedules
+                .map(d => d?.day)
+                .filter(day => day && day !== 'undefined');
+        }
 
-                else if (typeof availability.daily_schedules[0] === 'string') {
-                    specialDays = availability.daily_schedules;
-                }
+        console.log("📅 Giorni disponibili speciali processati:", specialDays);
+    }
 
-                console.log("📅 Giorni disponibili speciali:", specialDays);
-            }
-
-
-            return {
-                defaultDays: state.currentService.working_days || [],
-                specialDays,
-                availStart,
-                availEnd
-            };
-        },
+    return {
+        defaultDays: state.currentService.working_days || [],
+        specialDays,
+        availStart,
+        availEnd
+    };
+},
 
 
-        isDaySelectable(date, today, dayOfWeekStr, defaultDays, specialDays, availStart, availEnd) {
-            const dateIsInFuture = date >= today;
-            if (!dateIsInFuture) {
-                console.log(`❌ ${Utils.formatDateDDMMYYYY(date)} - Data passata`);
-                return false;
-            }
 
-            let currentAvailDays = defaultDays;
-            let isInSpecialRange = false;
+    isDaySelectable(date, today, dayOfWeekStr, defaultDays, specialDays, availStart, availEnd) {
+    // CORREZIONE: Usa il nuovo metodo di validazione
+    const dateIsInFuture = !Utils.isDateInPast(date);
+    if (!dateIsInFuture) {
+        console.log(`❌ ${Utils.formatDateDDMMYYYY(date)} - Data passata`);
+        return false;
+    }
 
-            if (availStart && availEnd) {
-                isInSpecialRange = (date >= availStart && date <= availEnd);
-            } else if (availStart) {
-                isInSpecialRange = (date >= availStart);
-            } else if (availEnd) {
-                isInSpecialRange = (date <= availEnd);
-            }
+    // CORREZIONE: Logica migliorata per disponibilità
+    let currentAvailDays = defaultDays;
+    let isInSpecialRange = false;
 
-            if (isInSpecialRange && specialDays.length > 0) {
-                currentAvailDays = specialDays;
-                console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} - Usa giorni speciali:`, specialDays);
-            } else {
-                console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} - Usa giorni default:`, defaultDays);
-            }
+    // Verifica se siamo in un range speciale
+    if (availStart || availEnd) {
+        const checkDate = Utils.normalizeDate(date);
+        isInSpecialRange = true;
+        
+        if (availStart) {
+            const start = Utils.normalizeDate(availStart);
+            isInSpecialRange = isInSpecialRange && (checkDate >= start);
+        }
+        
+        if (availEnd) {
+            const end = Utils.normalizeDate(availEnd);
+            isInSpecialRange = isInSpecialRange && (checkDate <= end);
+        }
+    }
 
-            const isAvailable = currentAvailDays.includes(dayOfWeekStr);
-            console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} (${dayOfWeekStr}) - Disponibile: ${isAvailable}`);
+    // Se siamo in range speciale E abbiamo giorni speciali, usali
+    if (isInSpecialRange && specialDays.length > 0) {
+        currentAvailDays = specialDays;
+        console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} - Usa giorni speciali:`, specialDays);
+    } else {
+        console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} - Usa giorni default:`, defaultDays);
+    }
 
-            return isAvailable;
-        },
+    const isAvailable = currentAvailDays.includes(dayOfWeekStr);
+    console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} (${dayOfWeekStr}) - Disponibile: ${isAvailable}`);
 
-        createDayElement(day, dayOfWeekStr, date, isSelectable) {
-            const dateDiv = document.createElement('div');
-            dateDiv.classList.add('div-block-6');
-            dateDiv.innerHTML = `
+    return isAvailable;
+},
+
+    createDayElement(day, dayOfWeekStr, date, isSelectable) {
+        const dateDiv = document.createElement('div');
+        dateDiv.classList.add('div-block-6');
+        dateDiv.innerHTML = `
             <div class="text-block-10"><strong>${day}</strong></div>
             <div class="text-block-10">${dayOfWeekStr}</div>
         `;
 
-            if (!isSelectable) {
-                dateDiv.classList.add('disabled');
-            } else {
-                dateDiv.addEventListener('click', () => this.selectDate(date));
-            }
+        if (!isSelectable) {
+            dateDiv.classList.add('disabled');
+        } else {
+            dateDiv.addEventListener('click', () => this.selectDate(date));
+        }
 
-            if (state.selectedDate && date.getTime() === state.selectedDate.getTime()) {
-                dateDiv.classList.add('selected');
-            }
+        if (state.selectedDate && date.getTime() === state.selectedDate.getTime()) {
+            dateDiv.classList.add('selected');
+        }
 
-            return dateDiv;
-        },
+        return dateDiv;
+    },
 
-        changeMonth(delta) {
-            CacheManager.clear();
-            state.currentDate.setMonth(state.currentDate.getMonth() + delta);
-            this.render();
-        },
-    };
+    changeMonth(delta) {
+        CacheManager.clear();
+        state.currentDate.setMonth(state.currentDate.getMonth() + delta);
+        this.render();
+    },
+};
 
 
-    // HOURS MANAGER
-    const HoursManager = {
-        async render() {
-            if (!DOM.hoursGrid || !state.currentService || !state.selectedDate) {
-                DOM.hoursGrid.innerHTML = '';
+// HOURS MANAGER
+const HoursManager = {
+    async render() {
+        if (!DOM.hoursGrid || !state.currentService || !state.selectedDate) {
+            DOM.hoursGrid.innerHTML = '';
+            return;
+        }
+
+        DOM.hoursGrid.innerHTML = '<p style="text-align: center; width: 100%;">Caricamento orari...</p>';
+
+        try {
+            const hours = this.getAvailableHours();
+
+            if (hours.length === 0) {
+                DOM.hoursGrid.innerHTML = '<p style="text-align: center; width: 100%;">Nessun orario disponibile per questa data.</p>';
+                this.disableNextButton();
                 return;
             }
 
-            DOM.hoursGrid.innerHTML = '<p style="text-align: center; width: 100%;">Caricamento orari...</p>';
+            const slots = await this.loadSlots();
 
-            try {
-                const hours = this.getAvailableHours();
+            DOM.hoursGrid.innerHTML = '';
+            let firstAvailableHour = null;
 
-                if (hours.length === 0) {
-                    DOM.hoursGrid.innerHTML = '<p style="text-align: center; width: 100%;">Nessun orario disponibile per questa data.</p>';
-                    this.disableNextButton();
-                    return;
+            for (const hour of hours) {
+                const btn = this.createHourButton(hour, slots);
+
+                if (!btn.disabled && firstAvailableHour === null) {
+                    firstAvailableHour = hour;
                 }
 
-                const slots = await this.loadSlots();
+                DOM.hoursGrid.appendChild(btn);
+            }
 
-                DOM.hoursGrid.innerHTML = '';
-                let firstAvailableHour = null;
-
-                for (const hour of hours) {
-                    const btn = this.createHourButton(hour, slots);
-
-                    if (!btn.disabled && firstAvailableHour === null) {
-                        firstAvailableHour = hour;
-                    }
-
-                    DOM.hoursGrid.appendChild(btn);
-                }
-
-                if (firstAvailableHour !== null) {
-                    this.selectHour(firstAvailableHour);
-                } else {
-                    this.disableNextButton();
-                }
-
-            } catch (error) {
-                console.error('Errore nel caricamento degli orari:', error);
-                DOM.hoursGrid.innerHTML = '<p style="text-align: center; width: 100%; color: red;">Errore nel caricare gli slot.</p>';
+            if (firstAvailableHour !== null) {
+                this.selectHour(firstAvailableHour);
+            } else {
                 this.disableNextButton();
             }
-        },
+
+        } catch (error) {
+            console.error('Errore nel caricamento degli orari:', error);
+            DOM.hoursGrid.innerHTML = '<p style="text-align: center; width: 100%; color: red;">Errore nel caricare gli slot.</p>';
+            this.disableNextButton();
+        }
+    },
 
 
-        getAvailableHours() {
-            const hours = [];
-            const availability = state.currentService._availability;
-            const dayOfWeekStr = CONFIG.DAY_NAMES[(state.selectedDate.getDay() + 6) % 7];
+    getAvailableHours() {
+        const hours = [];
+        const availability = state.currentService._availability;
+        const dayOfWeekStr = CONFIG.DAY_NAMES[(state.selectedDate.getDay() + 6) % 7];
 
-            if (availability?.daily_schedules) {
-                const schedule = availability.daily_schedules.find(d => d.day === dayOfWeekStr);
-                if (schedule) {
-                    const startHour = parseInt(schedule.start.split(':')[0]);
-                    const endHour = parseInt(schedule.end.split(':')[0]);
-                    for (let h = startHour; h < endHour; h++) {
-                        hours.push(h);
-                    }
-                    return hours;
+        if (availability?.daily_schedules) {
+            const schedule = availability.daily_schedules.find(d => d.day === dayOfWeekStr);
+            if (schedule) {
+                const startHour = parseInt(schedule.start.split(':')[0]);
+                const endHour = parseInt(schedule.end.split(':')[0]);
+                for (let h = startHour; h < endHour; h++) {
+                    hours.push(h);
                 }
+                return hours;
             }
+        }
 
-            const startHour = parseInt(state.currentService.working_hours_start.split(':')[0]);
-            const endHour = parseInt(state.currentService.working_hours_end.split(':')[0]);
-            for (let h = startHour; h < endHour; h++) {
-                hours.push(h);
-            }
+        const startHour = parseInt(state.currentService.working_hours_start.split(':')[0]);
+        const endHour = parseInt(state.currentService.working_hours_end.split(':')[0]);
+        for (let h = startHour; h < endHour; h++) {
+            hours.push(h);
+        }
 
-            return hours;
-        },
+        return hours;
+    },
 
-        async loadSlots() {
-            const cached = CacheManager.get(state.currentService.id, state.selectedDate);
-            if (cached) {
-                return cached;
-            }
+    async loadSlots() {
+        const cached = CacheManager.get(state.currentService.id, state.selectedDate);
+        if (cached) {
+            return cached;
+        }
 
-            const slots = await API.getSlots(state.currentService.id, state.selectedDate);
-            CacheManager.set(state.currentService.id, state.selectedDate, slots);
-            return slots;
-        },
+        const slots = await API.getSlots(state.currentService.id, state.selectedDate);
+        CacheManager.set(state.currentService.id, state.selectedDate, slots);
+        return slots;
+    },
 
-        createHourButton(hour, slots) {
-            const btn = document.createElement('button');
-            btn.classList.add('button-3', 'w-button');
-            btn.setAttribute('type', 'button');
+    createHourButton(hour, slots) {
+        const btn = document.createElement('button');
+        btn.classList.add('button-3', 'w-button');
+        btn.setAttribute('type', 'button');
 
-            const slot = this.findSlotForHour(slots, hour);
-            const availableSpots = slot ? (slot.capacity - slot.booked_count) : state.currentService.max_capacity_per_slot;
-            const isFull = availableSpots <= 0;
+        const slot = this.findSlotForHour(slots, hour);
+        const availableSpots = slot ? (slot.capacity - slot.booked_count) : state.currentService.max_capacity_per_slot;
+        const isFull = availableSpots <= 0;
 
 
-            btn.innerHTML = `
+        btn.innerHTML = `
             <div style="font-size: 16px; font-weight: bold;">${hour}:00</div>
             <div style="font-size: 12px; margin-top: 4px;">
                 ${isFull ? 'Posti esauriti' : ` ${availableSpots} posti liberi`}
             </div>
         `;
 
-            if (isFull) {
-                btn.disabled = true;
-                btn.classList.add('disabled');
-                btn.title = "Posti esauriti";
-            } else {
-                btn.addEventListener('click', () => {
-                    this.selectHour(hour);
-                    PricingManager.update();
+        if (isFull) {
+            btn.disabled = true;
+            btn.classList.add('disabled');
+            btn.title = "Posti esauriti";
+        } else {
+            btn.addEventListener('click', () => {
+                this.selectHour(hour);
+                PricingManager.update();
 
-                    this.updateNumberInputLimit(availableSpots);
-                });
+                this.updateNumberInputLimit(availableSpots);
+            });
+        }
+
+        return btn;
+    },
+
+
+    updateNumberInputLimit(maxAvailableSpots) {
+        if (!DOM.numInput) return;
+
+        const serviceMaxCapacity = state.currentService.max_capacity_per_slot;
+        const actualMax = Math.min(maxAvailableSpots, serviceMaxCapacity);
+        const currentValue = parseInt(DOM.numInput.value) || 1;
+
+        DOM.numInput.setAttribute('max', actualMax);
+        DOM.numInput.setAttribute('title', `Massimo ${actualMax} persone per questo orario`);
+
+        if (currentValue > actualMax) {
+            DOM.numInput.value = actualMax;
+            Utils.showInfo(`Numero persone aggiornato a ${actualMax} (posti disponibili)`);
+        }
+        PricingManager.update();
+    },
+
+    findSlotForHour(slots, hour) {
+        const startTime = Utils.createTimestamp(state.selectedDate, hour) / 1000;
+        return slots.find(s => s.start_time == startTime) || null;
+    },
+
+
+    selectHour(hour) {
+        state.selectedHour = hour;
+        const hourButtons = DOM.hoursGrid.querySelectorAll('.button-3');
+        hourButtons.forEach(btn => {
+            btn.classList.remove('selected');
+            if (btn.querySelector('div')?.textContent.startsWith(`${hour}:`)) {
+                btn.classList.add('selected');
+            }
+        });
+
+        DOM.nextBtn.disabled = false;
+        DOM.nextBtn.classList.remove('disabled');
+    },
+
+    disableNextButton() {
+        state.selectedHour = null;
+        DOM.nextBtn.disabled = true;
+        DOM.nextBtn.classList.add('disabled');
+    }
+};
+
+// EXTRAS MANAGER
+const ExtrasManager = {
+    render() {
+        if (!DOM.extrasContainer || !DOM.extrasTitle) return;
+
+        const extras = state.currentService._extra_of_service;
+
+        if (extras?.length > 0) {
+            const extra = extras[0];
+            DOM.extrasContainer.style.display = "flex";
+            DOM.extrasTitle.style.display = "block";
+
+            const checkbox = DOM.extrasContainer.querySelector("input[type='checkbox']");
+            if (checkbox) checkbox.checked = false;
+
+            const nameSpan = DOM.extrasContainer.querySelector(".checkbox-label-2");
+            if (nameSpan) nameSpan.textContent = extra.name;
+
+            const priceDiv = DOM.extrasContainer.querySelector(".text-block-11");
+            if (priceDiv) {
+                priceDiv.innerHTML = `<strong> (+</strong>${extra.price}<strong>€)</strong>`;
+            }
+        } else {
+            DOM.extrasContainer.style.display = "none";
+            DOM.extrasTitle.style.display = "none";
+        }
+    }
+};
+
+
+// PRICING MANAGER
+const PricingManager = {
+    update() {
+        if (!state.currentService) return;
+
+        const numPeople = Math.max(1, parseInt(DOM.numInput.value) || 1);
+        const availableSpots = this.getActualAvailableSpots();
+        const { basePrice, extraCost, totalPrice } = this.calculatePricing(numPeople);
+
+        this.updatePeopleText(numPeople, basePrice);
+        this.updateExtraRecap(extraCost);
+        this.updateTotalPrice(numPeople, basePrice, totalPrice);
+        this.updateCapacityNotice(numPeople, availableSpots);
+        this.updateNextButtonState(numPeople, availableSpots);
+        this.updateInputMaxLimit(availableSpots);
+    },
+
+    findSelectedSlot() {
+        if (!state.currentService || !state.selectedDate || state.selectedHour === null) {
+            return null;
+        }
+
+        try {
+            const cacheKey = CacheManager.generateKey(state.currentService.id, state.selectedDate);
+            const cachedSlots = state.slotsCache.get(cacheKey);
+
+            if (cachedSlots && cachedSlots.data) {
+                const startTime = Utils.createTimestamp(state.selectedDate, state.selectedHour);
+                const slot = cachedSlots.data.find(s => s.start_time === startTime);
+                return slot || null;
             }
 
-            return btn;
-        },
+            return null;
+
+        } catch (error) {
+            console.error("Errore nel trovare lo slot selezionato:", error);
+            return null;
+        }
+    },
+
+    getActualAvailableSpots() {
+        if (!state.currentService) {
+            return state.currentService?.max_capacity_per_slot || 8;
+        }
+
+        const slot = this.findSelectedSlot();
+
+        if (slot) {
+
+            const available = slot.capacity - (slot.booked_count || 0);
+            return available;
+        }
+
+        return state.currentService.max_capacity_per_slot;
+    },
 
 
-        updateNumberInputLimit(maxAvailableSpots) {
-            if (!DOM.numInput) return;
-
-            const serviceMaxCapacity = state.currentService.max_capacity_per_slot;
-            const actualMax = Math.min(maxAvailableSpots, serviceMaxCapacity);
-            const currentValue = parseInt(DOM.numInput.value) || 1;
+    updateInputMaxLimit(availableSpots) {
+        if (DOM.numInput) {
+            const serviceMax = state.currentService.max_capacity_per_slot;
+            const actualMax = Math.min(availableSpots, serviceMax);
 
             DOM.numInput.setAttribute('max', actualMax);
             DOM.numInput.setAttribute('title', `Massimo ${actualMax} persone per questo orario`);
 
+            const currentValue = parseInt(DOM.numInput.value) || 1;
             if (currentValue > actualMax) {
                 DOM.numInput.value = actualMax;
                 Utils.showInfo(`Numero persone aggiornato a ${actualMax} (posti disponibili)`);
             }
-            PricingManager.update();
-        },
-
-        findSlotForHour(slots, hour) {
-            const startTime = Utils.createTimestamp(state.selectedDate, hour) / 1000;
-            return slots.find(s => s.start_time == startTime) || null;
-        },
-
-
-        selectHour(hour) {
-            state.selectedHour = hour;
-            const hourButtons = DOM.hoursGrid.querySelectorAll('.button-3');
-            hourButtons.forEach(btn => {
-                btn.classList.remove('selected');
-                if (btn.querySelector('div')?.textContent.startsWith(`${hour}:`)) {
-                    btn.classList.add('selected');
-                }
-            });
-
-            DOM.nextBtn.disabled = false;
-            DOM.nextBtn.classList.remove('disabled');
-        },
-
-        disableNextButton() {
-            state.selectedHour = null;
-            DOM.nextBtn.disabled = true;
-            DOM.nextBtn.classList.add('disabled');
         }
-    };
+    },
 
-    // EXTRAS MANAGER
-    const ExtrasManager = {
-        render() {
-            if (!DOM.extrasContainer || !DOM.extrasTitle) return;
+    updateNextButtonState(numPeople, maxAllowed) {
+        const isOverCapacity = numPeople > maxAllowed;
 
-            const extras = state.currentService._extra_of_service;
+        if (DOM.nextBtn) {
+            DOM.nextBtn.disabled = isOverCapacity;
+            DOM.nextBtn.classList.toggle('disabled', isOverCapacity);
 
-            if (extras?.length > 0) {
-                const extra = extras[0];
-                DOM.extrasContainer.style.display = "flex";
-                DOM.extrasTitle.style.display = "block";
-
-                const checkbox = DOM.extrasContainer.querySelector("input[type='checkbox']");
-                if (checkbox) checkbox.checked = false;
-
-                const nameSpan = DOM.extrasContainer.querySelector(".checkbox-label-2");
-                if (nameSpan) nameSpan.textContent = extra.name;
-
-                const priceDiv = DOM.extrasContainer.querySelector(".text-block-11");
-                if (priceDiv) {
-                    priceDiv.innerHTML = `<strong> (+</strong>${extra.price}<strong>€)</strong>`;
-                }
+            if (isOverCapacity) {
+                DOM.nextBtn.title = `Massimo ${maxAllowed} persone per questo orario`;
             } else {
-                DOM.extrasContainer.style.display = "none";
-                DOM.extrasTitle.style.display = "none";
+                DOM.nextBtn.title = "";
             }
         }
-    };
+    },
 
+    updateCapacityNotice(numPeople, maxAllowed) {
+        let notice = document.querySelector(".max-capacity-notice");
 
-    // PRICING MANAGER
-    const PricingManager = {
-        update() {
-            if (!state.currentService) return;
-
-            const numPeople = Math.max(1, parseInt(DOM.numInput.value) || 1);
-            const availableSpots = this.getActualAvailableSpots();
-            const { basePrice, extraCost, totalPrice } = this.calculatePricing(numPeople);
-
-            this.updatePeopleText(numPeople, basePrice);
-            this.updateExtraRecap(extraCost);
-            this.updateTotalPrice(numPeople, basePrice, totalPrice);
-            this.updateCapacityNotice(numPeople, availableSpots);
-            this.updateNextButtonState(numPeople, availableSpots);
-            this.updateInputMaxLimit(availableSpots);
-        },
-
-        findSelectedSlot() {
-            if (!state.currentService || !state.selectedDate || state.selectedHour === null) {
-                return null;
-            }
-
-            try {
-                const cacheKey = CacheManager.generateKey(state.currentService.id, state.selectedDate);
-                const cachedSlots = state.slotsCache.get(cacheKey);
-
-                if (cachedSlots && cachedSlots.data) {
-                    const startTime = Utils.createTimestamp(state.selectedDate, state.selectedHour);
-                    const slot = cachedSlots.data.find(s => s.start_time === startTime);
-                    return slot || null;
-                }
-
-                return null;
-
-            } catch (error) {
-                console.error("Errore nel trovare lo slot selezionato:", error);
-                return null;
-            }
-        },
-
-        getActualAvailableSpots() {
-            if (!state.currentService) {
-                return state.currentService?.max_capacity_per_slot || 8;
-            }
-
-            const slot = this.findSelectedSlot();
-
-            if (slot) {
-
-                const available = slot.capacity - (slot.booked_count || 0);
-                return available;
-            }
-
-            return state.currentService.max_capacity_per_slot;
-        },
-
-
-        updateInputMaxLimit(availableSpots) {
-            if (DOM.numInput) {
-                const serviceMax = state.currentService.max_capacity_per_slot;
-                const actualMax = Math.min(availableSpots, serviceMax);
-
-                DOM.numInput.setAttribute('max', actualMax);
-                DOM.numInput.setAttribute('title', `Massimo ${actualMax} persone per questo orario`);
-
-                const currentValue = parseInt(DOM.numInput.value) || 1;
-                if (currentValue > actualMax) {
-                    DOM.numInput.value = actualMax;
-                    Utils.showInfo(`Numero persone aggiornato a ${actualMax} (posti disponibili)`);
-                }
-            }
-        },
-
-        updateNextButtonState(numPeople, maxAllowed) {
-            const isOverCapacity = numPeople > maxAllowed;
-
-            if (DOM.nextBtn) {
-                DOM.nextBtn.disabled = isOverCapacity;
-                DOM.nextBtn.classList.toggle('disabled', isOverCapacity);
-
-                if (isOverCapacity) {
-                    DOM.nextBtn.title = `Massimo ${maxAllowed} persone per questo orario`;
-                } else {
-                    DOM.nextBtn.title = "";
-                }
-            }
-        },
-
-        updateCapacityNotice(numPeople, maxAllowed) {
-            let notice = document.querySelector(".max-capacity-notice");
-
-            if (!notice) {
-                notice = document.createElement("div");
-                notice.classList.add("max-capacity-notice");
-                if (DOM.numInput?.parentNode) {
-                    DOM.numInput.insertAdjacentElement('afterend', notice);
-                }
-            }
-
-            const availableSpots = maxAllowed - numPeople;
-            notice.style.cssText = "color: #666; font-size: 14px; margin-top: 0.5rem;";
-
-            if (availableSpots === 0) {
-                notice.textContent = `⚠️ Tutti i ${maxAllowed} posti sono stati prenotati`;
-                notice.style.color = "#f59e0b";
-                notice.style.fontWeight = "bold";
-            } else {
-                notice.textContent = `✅ ${availableSpots} posti disponibili su ${maxAllowed}`;
-                notice.style.color = "#22c55e";
-            }
-        },
-        calculatePricing(numPeople) {
-            let basePrice = state.currentService.base_price;
-
-
-            if (state.currentService._service_prices?.length > 0) {
-                const matched = state.currentService._service_prices.find(p =>
-                    numPeople >= p.min_people && numPeople <= p.max_people
-                );
-                if (matched) basePrice = matched.price;
-            }
-
-            const costPerPersonWithFee = basePrice * (1 + state.currentService.platform_fee_percent / 100);
-
-            let extraCost = 0;
-            const checkbox = DOM.extrasContainer?.querySelector("input[type='checkbox']");
-            if (checkbox?.checked && state.currentService._extra_of_service?.length > 0) {
-                const extra = state.currentService._extra_of_service[0];
-                extraCost = extra.per_person ? extra.price * numPeople : extra.price;
-            }
-
-            const totalPrice = costPerPersonWithFee * numPeople + extraCost;
-
-            return { basePrice: costPerPersonWithFee, extraCost, totalPrice };
-        },
-
-        updatePeopleText(numPeople, costPerPerson) {
-            const personLabel = numPeople === 1 ? "persona" : "persone";
-
-            if (DOM.peopleText) {
-                DOM.peopleText.textContent = `${numPeople} ${personLabel} × ${costPerPerson.toFixed(2)}€ a testa`;
-            }
-
-            if (DOM.totalText) {
-                DOM.totalText.textContent = `${numPeople} × ${costPerPerson.toFixed(2)}€`;
-            }
-        },
-
-        updateExtraRecap(extraCost) {
-            const extraRecap = document.querySelector(".recap-step2.extra-hidden.extra-lable");
-            if (!extraRecap) return;
-
-            if (extraCost > 0) {
-                extraRecap.style.display = "flex";
-                const priceSpan = extraRecap.querySelector(".w-embed:nth-child(2) .my-span-class");
-                if (priceSpan) {
-                    priceSpan.textContent = `${extraCost.toFixed(2)}€`;
-                }
-            } else {
-                extraRecap.style.display = "none";
-            }
-        },
-
-        updateTotalPrice(numPeople, costPerPerson, totalPrice) {
-            if (DOM.totalPrice) {
-                DOM.totalPrice.textContent = `${totalPrice.toFixed(2)}€`;
+        if (!notice) {
+            notice = document.createElement("div");
+            notice.classList.add("max-capacity-notice");
+            if (DOM.numInput?.parentNode) {
+                DOM.numInput.insertAdjacentElement('afterend', notice);
             }
         }
-    };
 
-    // RECAP MANAGER
+        const availableSpots = maxAllowed - numPeople;
+        notice.style.cssText = "color: #666; font-size: 14px; margin-top: 0.5rem;";
 
-    const RecapManager = {
-        update() {
-            const recapStep = DOM.steps[DOM.steps.length - 1];
-
-            if (!recapStep || !state.currentService) return;
-            this.updateUserInfo(recapStep);
-            this.updateBookingInfo(recapStep);
-            this.updateExtraInfo(recapStep);
-            this.updateTotalPrice(recapStep);
-        },
-
-        updateUserInfo(recapStep) {
-            const fields = [
-                { selector: '.name', input: DOM.nameInput },
-                { selector: '.email', input: DOM.emailInput },
-                { selector: '.phone', input: DOM.phoneInput, defaultValue: '-' }
-            ];
-
-            fields.forEach(({ selector, input, defaultValue }) => {
-                const element = recapStep.querySelector(selector);
-                if (element && input) {
-                    element.textContent = input.value || defaultValue || '';
-                }
-            });
-        },
-
-        updateBookingInfo(recapStep) {
-
-            const serviceNameEl = recapStep.querySelector(".nome-servizio");
-            if (serviceNameEl) {
-                serviceNameEl.textContent = state.currentService.name;
-            }
-
-
-            const dateTimeEl = recapStep.querySelector(".data-ora");
-            if (dateTimeEl && state.selectedDate && state.selectedHour !== null) {
-                const formattedDate = Utils.formatDateDDMMYYYY(state.selectedDate);
-                dateTimeEl.textContent = `${formattedDate} alle ore ${state.selectedHour}:00`;
-            }
-
-
-            const guestsEl = recapStep.querySelector(".numero-ospiti");
-            if (guestsEl && DOM.numInput) {
-                const numPeople = parseInt(DOM.numInput.value) || 1;
-                const label = numPeople === 1 ? "ospite" : "ospiti";
-                guestsEl.textContent = `${numPeople} ${label}`;
-            }
-        },
-
-        updateExtraInfo(recapStep) {
-            const extraContainer = recapStep.querySelector(".extra-container");
-            if (!extraContainer) return;
-
-            const checkbox = DOM.extrasContainer?.querySelector("input[type='checkbox']");
-            const extras = state.currentService._extra_of_service;
-
-            if (checkbox?.checked && extras?.length > 0) {
-                extraContainer.style.display = "flex";
-                const extra = extras[0];
-
-                const extraNameEl = extraContainer.querySelector(".checkbox-label-2");
-                if (extraNameEl) {
-                    extraNameEl.textContent = extra.name;
-                }
-            } else {
-                extraContainer.style.display = "none";
-            }
-        },
-
-        updateTotalPrice(recapStep) {
-            const totalPriceEl = recapStep.querySelector(".total-price");
-            if (!totalPriceEl) return;
-
-            const numPeople = Math.max(1, parseInt(DOM.numInput.value) || 1);
-            const { totalPrice } = PricingManager.calculatePricing(numPeople);
-
-            totalPriceEl.textContent = `${totalPrice.toFixed(2)}€`;
+        if (availableSpots === 0) {
+            notice.textContent = `⚠️ Tutti i ${maxAllowed} posti sono stati prenotati`;
+            notice.style.color = "#f59e0b";
+            notice.style.fontWeight = "bold";
+        } else {
+            notice.textContent = `✅ ${availableSpots} posti disponibili su ${maxAllowed}`;
+            notice.style.color = "#22c55e";
         }
-    };
+    },
+    calculatePricing(numPeople) {
+        let basePrice = state.currentService.base_price;
 
-    // OPTIMIZED BOOKING MANAGER
-    const BookingManager = {
-        async submit() {
 
-            if (!this.validateBooking()) {
-                return;
+        if (state.currentService._service_prices?.length > 0) {
+            const matched = state.currentService._service_prices.find(p =>
+                numPeople >= p.min_people && numPeople <= p.max_people
+            );
+            if (matched) basePrice = matched.price;
+        }
+
+        const costPerPersonWithFee = basePrice * (1 + state.currentService.platform_fee_percent / 100);
+
+        let extraCost = 0;
+        const checkbox = DOM.extrasContainer?.querySelector("input[type='checkbox']");
+        if (checkbox?.checked && state.currentService._extra_of_service?.length > 0) {
+            const extra = state.currentService._extra_of_service[0];
+            extraCost = extra.per_person ? extra.price * numPeople : extra.price;
+        }
+
+        const totalPrice = costPerPersonWithFee * numPeople + extraCost;
+
+        return { basePrice: costPerPersonWithFee, extraCost, totalPrice };
+    },
+
+    updatePeopleText(numPeople, costPerPerson) {
+        const personLabel = numPeople === 1 ? "persona" : "persone";
+
+        if (DOM.peopleText) {
+            DOM.peopleText.textContent = `${numPeople} ${personLabel} × ${costPerPerson.toFixed(2)}€ a testa`;
+        }
+
+        if (DOM.totalText) {
+            DOM.totalText.textContent = `${numPeople} × ${costPerPerson.toFixed(2)}€`;
+        }
+    },
+
+    updateExtraRecap(extraCost) {
+        const extraRecap = document.querySelector(".recap-step2.extra-hidden.extra-lable");
+        if (!extraRecap) return;
+
+        if (extraCost > 0) {
+            extraRecap.style.display = "flex";
+            const priceSpan = extraRecap.querySelector(".w-embed:nth-child(2) .my-span-class");
+            if (priceSpan) {
+                priceSpan.textContent = `${extraCost.toFixed(2)}€`;
             }
+        } else {
+            extraRecap.style.display = "none";
+        }
+    },
 
+    updateTotalPrice(numPeople, costPerPerson, totalPrice) {
+        if (DOM.totalPrice) {
+            DOM.totalPrice.textContent = `${totalPrice.toFixed(2)}€`;
+        }
+    }
+};
 
-            DOM.nextBtn.disabled = true;
-            DOM.nextBtn.textContent = "Elaborazione...";
+// RECAP MANAGER
 
-            try {
-                console.log("📤 Inizio processo di prenotazione ottimizzato...");
-                const bookingData = this.prepareBookingData();
-                const response = await this.makeCompleteBookingCall(bookingData);
+const RecapManager = {
+    update() {
+        const recapStep = DOM.steps[DOM.steps.length - 1];
 
-                await this.processPayment(
-                    bookingData.user_email,
-                    Math.round(bookingData.total_price * 100),
-                    response.booking_id
-                );
+        if (!recapStep || !state.currentService) return;
+        this.updateUserInfo(recapStep);
+        this.updateBookingInfo(recapStep);
+        this.updateExtraInfo(recapStep);
+        this.updateTotalPrice(recapStep);
+    },
 
-            } catch (error) {
-                console.error("❌ Errore durante la prenotazione:", error);
-                Utils.showError(`Errore: ${error.message}`);
-                DOM.nextBtn.disabled = false;
-                DOM.nextBtn.textContent = "Prenota e paga";
+    updateUserInfo(recapStep) {
+        const fields = [
+            { selector: '.name', input: DOM.nameInput },
+            { selector: '.email', input: DOM.emailInput },
+            { selector: '.phone', input: DOM.phoneInput, defaultValue: '-' }
+        ];
+
+        fields.forEach(({ selector, input, defaultValue }) => {
+            const element = recapStep.querySelector(selector);
+            if (element && input) {
+                element.textContent = input.value || defaultValue || '';
             }
-        },
+        });
+    },
 
-        prepareBookingData() {
+    updateBookingInfo(recapStep) {
+
+        const serviceNameEl = recapStep.querySelector(".nome-servizio");
+        if (serviceNameEl) {
+            serviceNameEl.textContent = state.currentService.name;
+        }
+
+
+        const dateTimeEl = recapStep.querySelector(".data-ora");
+        if (dateTimeEl && state.selectedDate && state.selectedHour !== null) {
+            const formattedDate = Utils.formatDateDDMMYYYY(state.selectedDate);
+            dateTimeEl.textContent = `${formattedDate} alle ore ${state.selectedHour}:00`;
+        }
+
+
+        const guestsEl = recapStep.querySelector(".numero-ospiti");
+        if (guestsEl && DOM.numInput) {
             const numPeople = parseInt(DOM.numInput.value) || 1;
-            const { totalPrice, extraId } = this.calculateFinalPrice(numPeople);
-            const timestamp = Utils.createTimestamp(state.selectedDate, state.selectedHour);
-
-            return {
-                user_name: DOM.nameInput.value.trim(),
-                user_email: DOM.emailInput.value.trim(),
-                user_phone: (DOM.phoneInput?.value.trim()) || "",
-                service_id: state.currentService.id,
-                selected_date: Utils.formatDateISO(state.selectedDate),
-                selected_hour: timestamp,
-                num_people: numPeople,
-                booking_extra_id: extraId || 0,
-                total_price: totalPrice
-            };
-        },
-
-        async makeCompleteBookingCall(bookingData) {
-            console.log("🚀 Invio dati prenotazione completi:", bookingData);
-
-            const response = await API.request('/api/complete_booking', {
-                method: 'POST',
-                body: JSON.stringify(bookingData)
-            });
-
-            console.log("✅ Risposta API completa:", response);
-
-            if (!response) {
-                throw new Error("Risposta API non valida");
-            }
-
-            if (!response.booking_id) {
-                console.warn("⚠️ booking_id non presente nella risposta, provo a recuperarlo...");
-
-                const bookingId = await this.getLastBookingIdFallback(bookingData.user_email);
-                return { ...response, booking_id: bookingId };
-            }
-
-            console.log("✅ ID Prenotazione ottenuto direttamente:", response.booking_id);
-            return response;
-        },
-
-        async getLastBookingIdFallback(userEmail) {
-            try {
-                const bookings = await API.request(`/booking?user_email=${encodeURIComponent(userEmail)}`);
-
-                if (bookings && bookings.length > 0) {
-                    const lastBooking = bookings.reduce((latest, booking) => {
-                        return (!latest || booking.created_at > latest.created_at) ? booking : latest;
-                    }, null);
-
-                    return lastBooking.id;
-                }
-
-                throw new Error("Nessuna prenotazione trovata");
-            } catch (error) {
-                console.error("Errore nel recupero ID prenotazione:", error);
-                throw new Error("Prenotazione creata ma impossibile ottenere l'ID per il pagamento");
-            }
-        },
-
-        validateBooking() {
-            if (!DOM.nameInput.value || !DOM.emailInput.value) {
-                Utils.showError("Per favore compila i campi obbligatori: Nome e Email");
-                return false;
-            }
-
-            if (!Utils.isValidEmail(DOM.emailInput.value)) {
-                Utils.showError("Inserisci un indirizzo email valido");
-                return false;
-            }
-
-            if (!DOM.gdprCheckbox.checked) {
-                Utils.showError("Devi accettare il trattamento dei dati personali per procedere");
-                return false;
-            }
-
-            if (!state.selectedDate || state.selectedHour === null) {
-                Utils.showError("Per favore seleziona data e orario");
-                return false;
-            }
-
-            if (!state.currentService) {
-                Utils.showError("Servizio non caricato correttamente");
-                return false;
-            }
-
-            return true;
-        },
-
-        calculateFinalPrice(numPeople) {
-            const { totalPrice } = PricingManager.calculatePricing(numPeople);
-
-            let extraId = 0;
-            const checkbox = DOM.extrasContainer?.querySelector("input[type='checkbox']");
-            if (checkbox?.checked && state.currentService._extra_of_service?.length > 0) {
-                extraId = state.currentService._extra_of_service[0].id;
-            }
-
-            return { totalPrice, extraId };
-        },
-
-        async processPayment(userEmail, totalAmountInCents, bookingId) {
-            console.log("💳 Creazione sessione Stripe...");
-            console.log("📊 Dati inviati:", {
-                email: userEmail,
-                total_amount: totalAmountInCents,
-                booking_id: bookingId
-            });
-
-            try {
-                const stripeData = await API.createStripeCheckout(
-                    userEmail,
-                    totalAmountInCents,
-                    bookingId
-                );
-
-                console.log("✅ Risposta Stripe ricevuta:", stripeData);
-
-                if (stripeData.redirect_url) {
-                    console.log("🔄 Reindirizzamento a Stripe:", stripeData.redirect_url);
-                    window.location.href = stripeData.redirect_url;
-                } else {
-                    console.error("❌ Risposta completa Stripe:", JSON.stringify(stripeData, null, 2));
-                    throw new Error("URL di redirect Stripe non ricevuto");
-                }
-            } catch (error) {
-                console.error("❌ Errore nel processo di pagamento:", error);
-
-                if (error.message.includes('Unable to locate var')) {
-                    throw new Error(
-                        'Configurazione pagamento non completata. ' +
-                        'La prenotazione è stata salvata (ID: ' + bookingId + '). ' +
-                        'Contatta il supporto per completare il pagamento.'
-                    );
-                }
-                throw error;
-            }
+            const label = numPeople === 1 ? "ospite" : "ospiti";
+            guestsEl.textContent = `${numPeople} ${label}`;
         }
-    };
+    },
 
-    // SERVICE LOADER
+    updateExtraInfo(recapStep) {
+        const extraContainer = recapStep.querySelector(".extra-container");
+        if (!extraContainer) return;
 
-    const ServiceLoader = {
-        async load(serviceSlug) {
-            try {
-                state.currentService = await API.getServiceBySlug(serviceSlug);
-                console.log("✅ Servizio caricato:", state.currentService);
-                state.selectedDate = null;
-                state.selectedHour = null;
+        const checkbox = DOM.extrasContainer?.querySelector("input[type='checkbox']");
+        const extras = state.currentService._extra_of_service;
 
-                if (DOM.numInput && state.currentService.max_capacity_per_slot) {
-                    const maxCapacity = state.currentService.max_capacity_per_slot;
+        if (checkbox?.checked && extras?.length > 0) {
+            extraContainer.style.display = "flex";
+            const extra = extras[0];
 
-                    DOM.numInput.removeAttribute('min');
-                    DOM.numInput.setAttribute('max', maxCapacity);
-                    DOM.numInput.setAttribute('title', `Seleziona tra 1 e ${maxCapacity} persone`);
-                    DOM.numInput.value = 1;
-                }
-
-                CalendarManager.render();
-                ExtrasManager.render();
-                PricingManager.update();
-                StepNavigation.goToStep(1);
-
-            } catch (error) {
-                console.error("❌ Errore nel caricamento del servizio:", error);
-                Utils.showError("Impossibile caricare il servizio. Riprova.");
+            const extraNameEl = extraContainer.querySelector(".checkbox-label-2");
+            if (extraNameEl) {
+                extraNameEl.textContent = extra.name;
             }
+        } else {
+            extraContainer.style.display = "none";
         }
-    };
+    },
+
+    updateTotalPrice(recapStep) {
+        const totalPriceEl = recapStep.querySelector(".total-price");
+        if (!totalPriceEl) return;
+
+        const numPeople = Math.max(1, parseInt(DOM.numInput.value) || 1);
+        const { totalPrice } = PricingManager.calculatePricing(numPeople);
+
+        totalPriceEl.textContent = `${totalPrice.toFixed(2)}€`;
+    }
+};
+
+// OPTIMIZED BOOKING MANAGER
+const BookingManager = {
+    async submit() {
+
+        if (!this.validateBooking()) {
+            return;
+        }
 
 
-    // EVENT LISTENERS
+        DOM.nextBtn.disabled = true;
+        DOM.nextBtn.textContent = "Elaborazione...";
 
-    function initializeEventListeners() {
-        [DOM.nextBtn, DOM.backBtn].forEach(btn => {
-            btn?.setAttribute("type", "button");
+        try {
+            console.log("📤 Inizio processo di prenotazione ottimizzato...");
+            const bookingData = this.prepareBookingData();
+            const response = await this.makeCompleteBookingCall(bookingData);
+
+            await this.processPayment(
+                bookingData.user_email,
+                Math.round(bookingData.total_price * 100),
+                response.booking_id
+            );
+
+        } catch (error) {
+            console.error("❌ Errore durante la prenotazione:", error);
+            Utils.showError(`Errore: ${error.message}`);
+            DOM.nextBtn.disabled = false;
+            DOM.nextBtn.textContent = "Prenota e paga";
+        }
+    },
+
+    prepareBookingData() {
+        const numPeople = parseInt(DOM.numInput.value) || 1;
+        const { totalPrice, extraId } = this.calculateFinalPrice(numPeople);
+        const timestamp = Utils.createTimestamp(state.selectedDate, state.selectedHour);
+
+        return {
+            user_name: DOM.nameInput.value.trim(),
+            user_email: DOM.emailInput.value.trim(),
+            user_phone: (DOM.phoneInput?.value.trim()) || "",
+            service_id: state.currentService.id,
+            selected_date: Utils.formatDateISO(state.selectedDate),
+            selected_hour: timestamp,
+            num_people: numPeople,
+            booking_extra_id: extraId || 0,
+            total_price: totalPrice
+        };
+    },
+
+    async makeCompleteBookingCall(bookingData) {
+        console.log("🚀 Invio dati prenotazione completi:", bookingData);
+
+        const response = await API.request('/api/complete_booking', {
+            method: 'POST',
+            body: JSON.stringify(bookingData)
         });
 
-DOM.nextBtn?.addEventListener("click", () => {
-    if (DOM.nextBtn.disabled) return;
-    StepNavigation.next();
-});
-DOM.backBtn?.addEventListener("click", () => {
-    if (DOM.backBtn.disabled) return;
-    StepNavigation.back();
-});
-DOM.prevMonthBtn?.addEventListener('click', () => CalendarManager.changeMonth(-1));
-DOM.nextMonthBtn?.addEventListener('click', () => CalendarManager.changeMonth(1));
+        console.log("✅ Risposta API completa:", response);
 
-const debouncedUpdate = Utils.debounce(() => PricingManager.update(), 300);
-DOM.numInput?.addEventListener('input', debouncedUpdate);
-const checkbox = DOM.extrasContainer?.querySelector("input[type='checkbox']");
-checkbox?.addEventListener('change', () => PricingManager.update());
-DOM.gdprCheckbox?.addEventListener('keydown', (e) => {
-
-    if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        DOM.gdprCheckbox.checked = !DOM.gdprCheckbox.checked;
-        DOM.gdprCheckbox.dispatchEvent(new Event('change'));
-    }
-});
-
-DOM.closeModalBtns.forEach(btn => {
-    btn.addEventListener('click', () => Modal.close());
-});
-
-DOM.modalOverlay?.addEventListener('click', (e) => {
-    if (e.target === DOM.modalOverlay) {
-        Modal.close();
-    }
-});
-
-document.querySelectorAll('[data-service-slug]').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-        e.preventDefault();
-        const serviceSlug = btn.dataset.serviceSlug;
-
-        if (!state.currentService || state.currentService.slug !== serviceSlug) {
-            await ServiceLoader.load(serviceSlug);
+        if (!response) {
+            throw new Error("Risposta API non valida");
         }
 
-        Modal.open();
+        if (!response.booking_id) {
+            console.warn("⚠️ booking_id non presente nella risposta, provo a recuperarlo...");
+
+            const bookingId = await this.getLastBookingIdFallback(bookingData.user_email);
+            return { ...response, booking_id: bookingId };
+        }
+
+        console.log("✅ ID Prenotazione ottenuto direttamente:", response.booking_id);
+        return response;
+    },
+
+    async getLastBookingIdFallback(userEmail) {
+        try {
+            const bookings = await API.request(`/booking?user_email=${encodeURIComponent(userEmail)}`);
+
+            if (bookings && bookings.length > 0) {
+                const lastBooking = bookings.reduce((latest, booking) => {
+                    return (!latest || booking.created_at > latest.created_at) ? booking : latest;
+                }, null);
+
+                return lastBooking.id;
+            }
+
+            throw new Error("Nessuna prenotazione trovata");
+        } catch (error) {
+            console.error("Errore nel recupero ID prenotazione:", error);
+            throw new Error("Prenotazione creata ma impossibile ottenere l'ID per il pagamento");
+        }
+    },
+
+    validateBooking() {
+        if (!DOM.nameInput.value || !DOM.emailInput.value) {
+            Utils.showError("Per favore compila i campi obbligatori: Nome e Email");
+            return false;
+        }
+
+        if (!Utils.isValidEmail(DOM.emailInput.value)) {
+            Utils.showError("Inserisci un indirizzo email valido");
+            return false;
+        }
+
+        if (!DOM.gdprCheckbox.checked) {
+            Utils.showError("Devi accettare il trattamento dei dati personali per procedere");
+            return false;
+        }
+
+        if (!state.selectedDate || state.selectedHour === null) {
+            Utils.showError("Per favore seleziona data e orario");
+            return false;
+        }
+
+        if (!state.currentService) {
+            Utils.showError("Servizio non caricato correttamente");
+            return false;
+        }
+
+        return true;
+    },
+
+    calculateFinalPrice(numPeople) {
+        const { totalPrice } = PricingManager.calculatePricing(numPeople);
+
+        let extraId = 0;
+        const checkbox = DOM.extrasContainer?.querySelector("input[type='checkbox']");
+        if (checkbox?.checked && state.currentService._extra_of_service?.length > 0) {
+            extraId = state.currentService._extra_of_service[0].id;
+        }
+
+        return { totalPrice, extraId };
+    },
+
+    async processPayment(userEmail, totalAmountInCents, bookingId) {
+        console.log("💳 Creazione sessione Stripe...");
+        console.log("📊 Dati inviati:", {
+            email: userEmail,
+            total_amount: totalAmountInCents,
+            booking_id: bookingId
+        });
+
+        try {
+            const stripeData = await API.createStripeCheckout(
+                userEmail,
+                totalAmountInCents,
+                bookingId
+            );
+
+            console.log("✅ Risposta Stripe ricevuta:", stripeData);
+
+            if (stripeData.redirect_url) {
+                console.log("🔄 Reindirizzamento a Stripe:", stripeData.redirect_url);
+                window.location.href = stripeData.redirect_url;
+            } else {
+                console.error("❌ Risposta completa Stripe:", JSON.stringify(stripeData, null, 2));
+                throw new Error("URL di redirect Stripe non ricevuto");
+            }
+        } catch (error) {
+            console.error("❌ Errore nel processo di pagamento:", error);
+
+            if (error.message.includes('Unable to locate var')) {
+                throw new Error(
+                    'Configurazione pagamento non completata. ' +
+                    'La prenotazione è stata salvata (ID: ' + bookingId + '). ' +
+                    'Contatta il supporto per completare il pagamento.'
+                );
+            }
+            throw error;
+        }
+    }
+};
+
+// SERVICE LOADER
+
+const ServiceLoader = {
+    async load(serviceSlug) {
+        try {
+            console.log(`🔄 Caricamento servizio: ${serviceSlug}`);
+            state.currentService = await API.getServiceBySlug(serviceSlug);
+            console.log("✅ Servizio caricato:", state.currentService);
+            
+            state.selectedDate = null;
+            state.selectedHour = null;
+            state.currentDate = new Date();
+
+            CalendarManager.render();
+            ExtrasManager.render();
+            PricingManager.update();
+            StepNavigation.goToStep(1);
+
+        } catch (error) {
+            console.error("❌ Errore nel caricamento del servizio:", error);
+            Utils.showError("Impossibile caricare il servizio. Riprova.");
+        }
+    }
+};
+
+
+// EVENT LISTENERS
+
+function initializeEventListeners() {
+    [DOM.nextBtn, DOM.backBtn].forEach(btn => {
+        btn?.setAttribute("type", "button");
     });
-});
+
+    DOM.nextBtn?.addEventListener("click", () => {
+        if (DOM.nextBtn.disabled) return;
+        StepNavigation.next();
+    });
+    
+    DOM.backBtn?.addEventListener("click", () => {
+        if (DOM.backBtn.disabled) return;
+        StepNavigation.back();
+    });
+    
+    let calendarInitialized = false;
+    
+    DOM.prevMonthBtn?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        CalendarManager.changeMonth(-1);
+    });
+    
+    DOM.nextMonthBtn?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        CalendarManager.changeMonth(1);
+    });
+
+    // CORREZIONE: Gestione semplificata dei service buttons
+    document.querySelectorAll('[data-service-slug]').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const serviceSlug = btn.dataset.serviceSlug;
+            console.log(`🎯 Click su servizio: ${serviceSlug}`);
+
+            if (!state.currentService || state.currentService.slug !== serviceSlug) {
+                await ServiceLoader.load(serviceSlug);
+            }
+
+            Modal.open();
+        });
+    });
+
+    if (!calendarInitialized) {
+        calendarInitialized = true;
+        console.log("📅 Calendario inizializzato");
+    }
+
+    const debouncedUpdate = Utils.debounce(() => PricingManager.update(), 300);
+    DOM.numInput?.addEventListener('input', debouncedUpdate);
+    
+    const checkbox = DOM.extrasContainer?.querySelector("input[type='checkbox']");
+    checkbox?.addEventListener('change', () => PricingManager.update());
+    
+    DOM.gdprCheckbox?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            DOM.gdprCheckbox.checked = !DOM.gdprCheckbox.checked;
+            DOM.gdprCheckbox.dispatchEvent(new Event('change'));
+        }
+    });
+
+    DOM.closeModalBtns.forEach(btn => {
+        btn.addEventListener('click', () => Modal.close());
+    });
+
+    DOM.modalOverlay?.addEventListener('click', (e) => {
+        if (e.target === DOM.modalOverlay) {
+            Modal.close();
+        }
+    });
 }
 
 const AccessibilityManager = {
