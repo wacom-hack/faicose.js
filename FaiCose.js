@@ -735,125 +735,141 @@ const CalendarManager = {
 // HOURS MANAGER
 const HoursManager = {
     async render() {
-        if (!DOM.hoursGrid || !state.currentService || !state.selectedDate) {
-            DOM.hoursGrid.innerHTML = '';
+    if (!DOM.hoursGrid || !state.currentService || !state.selectedDate) {
+        DOM.hoursGrid.innerHTML = '';
+        return;
+    }
+
+    DOM.hoursGrid.innerHTML = '<p style="text-align: center; width: 100%;">Caricamento orari...</p>';
+
+    try {
+        const hours = this.getAvailableHours();
+
+        console.log("🔍 Ore disponibili calcolate:", hours);
+
+        if (hours.length === 0) {
+            DOM.hoursGrid.innerHTML = '<p style="text-align: center; width: 100%;">Nessun orario disponibile per questa data.</p>';
+            this.disableNextButton();
             return;
         }
 
-        DOM.hoursGrid.innerHTML = '<p style="text-align: center; width: 100%;">Caricamento orari...</p>';
+        const slots = await this.loadSlots();
 
-        try {
-            const hours = this.getAvailableHours();
+        DOM.hoursGrid.innerHTML = '';
+        let firstAvailableHour = null;
 
-            if (hours.length === 0) {
-                DOM.hoursGrid.innerHTML = '<p style="text-align: center; width: 100%;">Nessun orario disponibile per questa data.</p>';
-                this.disableNextButton();
-                return;
+        for (const hour of hours) {
+            const btn = this.createHourButton(hour, slots);
+
+            if (!btn.disabled && firstAvailableHour === null) {
+                firstAvailableHour = hour;
             }
 
-            const slots = await this.loadSlots();
+            DOM.hoursGrid.appendChild(btn);
+        }
 
-            DOM.hoursGrid.innerHTML = '';
-            let firstAvailableHour = null;
-
-            for (const hour of hours) {
-                const btn = this.createHourButton(hour, slots);
-
-                if (!btn.disabled && firstAvailableHour === null) {
-                    firstAvailableHour = hour;
-                }
-
-                DOM.hoursGrid.appendChild(btn);
-            }
-
-            if (firstAvailableHour !== null) {
-                this.selectHour(firstAvailableHour);
-            } else {
-                this.disableNextButton();
-            }
-
-        } catch (error) {
-            console.error('Errore nel caricamento degli orari:', error);
-            DOM.hoursGrid.innerHTML = '<p style="text-align: center; width: 100%; color: red;">Errore nel caricare gli slot.</p>';
+        if (firstAvailableHour !== null) {
+            this.selectHour(firstAvailableHour);
+        } else {
+            console.warn("⚠️ Tutti gli slot sono pieni per le ore:", hours);
             this.disableNextButton();
         }
-    },
+
+    } catch (error) {
+        console.error('Errore nel caricamento degli orari:', error);
+        DOM.hoursGrid.innerHTML = '<p style="text-align: center; width: 100%; color: red;">Errore nel caricare gli slot.</p>';
+        this.disableNextButton();
+    }
+},
 
 
-    getAvailableHours() {
-        const hours = [];
-        const availability = state.currentService._availability;
-        const dayOfWeekStr = CONFIG.DAY_NAMES[(state.selectedDate.getDay() + 6) % 7];
+    // CORREZIONE COMPLETA del metodo getAvailableHours
+getAvailableHours() {
+    const hours = [];
+    const availability = state.currentService._availability;
+    const dayOfWeekStr = CONFIG.DAY_NAMES[(state.selectedDate.getDay() + 6) % 7];
 
-        console.log("🔍 Cerco orari per:", dayOfWeekStr);
+    console.log("🔍 Cerco orari per:", dayOfWeekStr);
 
-        // PRIMA cerca negli orari speciali della availability rule
-        if (availability?.daily_schedules) {
-            console.log("🔍 Cerco orari speciali in daily_schedules");
-
-            try {
-                let schedules = availability.daily_schedules;
-
-                // Gestione struttura complessa (array di array)
-                if (Array.isArray(schedules) && schedules.length > 0) {
-                    if (Array.isArray(schedules[0])) {
-                        schedules = schedules.flat();
-                    }
-
-                    const scheduleForDay = schedules.find(s => s && s.day === dayOfWeekStr);
-                    if (scheduleForDay) {
-                        console.log("✅ Trovato orario speciale:", scheduleForDay);
-
-                        // CORREZIONE: Gestione orari invertiti
-                        let startHour = parseInt(scheduleForDay.start.split(':')[0]);
-                        let endHour = parseInt(scheduleForDay.end.split(':')[0]);
-
-                        // Se l'orario di fine è minore dell'orario di inizio, scambiali
-                        if (endHour < startHour) {
-                            console.warn("⚠️ Orari invertiti rilevati, correggo automaticamente");
-                            [startHour, endHour] = [endHour, startHour];
-                        }
-
-                        // Validazione degli orari
-                        if (startHour >= 0 && startHour <= 23 && endHour >= 0 && endHour <= 23 && startHour < endHour) {
-                            console.log(`🕒 Orari corretti: ${startHour}:00 - ${endHour}:00`);
-
-                            for (let h = startHour; h < endHour; h++) {
-                                hours.push(h);
-                            }
-                            console.log("📅 Ore generate:", hours);
-                            return hours;
-                        } else {
-                            console.error("❌ Orari non validi dopo correzione:", startHour, endHour);
-                        }
-                    } else {
-                        console.log("❌ Nessun orario speciale trovato per", dayOfWeekStr);
-                    }
+    // PRIMA cerca negli orari speciali della availability rule
+    if (availability?.daily_schedules) {
+        console.log("🔍 Cerco orari speciali in daily_schedules");
+        
+        try {
+            let schedules = availability.daily_schedules;
+            
+            // Gestione struttura complessa (array di array)
+            if (Array.isArray(schedules) && schedules.length > 0) {
+                if (Array.isArray(schedules[0])) {
+                    schedules = schedules.flat();
                 }
-            } catch (error) {
-                console.error("❌ Errore nel parsing orari speciali:", error);
+                
+                const scheduleForDay = schedules.find(s => s && s.day === dayOfWeekStr);
+                if (scheduleForDay) {
+                    console.log("✅ Trovato orario speciale:", scheduleForDay);
+                    
+                    // CORREZIONE: Gestione corretta degli orari
+                    let startHour = parseInt(scheduleForDay.start.split(':')[0]);
+                    let endHour = parseInt(scheduleForDay.end.split(':')[0]);
+                    
+                    console.log(`🕒 Orari originali: ${startHour}:00 - ${endHour}:00`);
+                    
+                    // CORREZIONE: Se end < start, probabilmente è un errore di inserimento
+                    // Inverto start e end per correggere
+                    if (endHour <= startHour) {
+                        console.warn("⚠️ Orari apparentemente invertiti, correggo:", `${startHour}:00 - ${endHour}:00`, "→", `${endHour}:00 - ${startHour}:00`);
+                        [startHour, endHour] = [endHour, startHour];
+                    }
+                    
+                    console.log(`🕒 Orari corretti: ${startHour}:00 - ${endHour}:00`);
+                    
+                    // Genera le ore disponibili
+                    for (let h = startHour; h < endHour; h++) {
+                        hours.push(h);
+                    }
+                    
+                    console.log("📅 Ore generate:", hours);
+                    
+                    if (hours.length === 0) {
+                        console.warn("⚠️ Nessuna ora generata - controlla gli orari");
+                    }
+                    
+                    return hours;
+                } else {
+                    console.log("❌ Nessun orario speciale trovato per", dayOfWeekStr);
+                }
             }
+        } catch (error) {
+            console.error("❌ Errore nel parsing orari speciali:", error);
         }
+    }
 
-        // ALTRIMENTI usa gli orari di default del servizio
-        console.log("🔍 Uso orari di default del servizio");
-        const startHour = parseInt(state.currentService.working_hours_start.split(':')[0]);
-        const endHour = parseInt(state.currentService.working_hours_end.split(':')[0]);
-
-        console.log(`🕒 Orari default: ${startHour}:00 - ${endHour}:00`);
-
-        // Validazione orari default
-        if (startHour < endHour) {
-            for (let h = startHour; h < endHour; h++) {
+    // ALTRIMENTI usa gli orari di default del servizio
+    console.log("🔍 Uso orari di default del servizio");
+    const startHour = parseInt(state.currentService.working_hours_start.split(':')[0]);
+    const endHour = parseInt(state.currentService.working_hours_end.split(':')[0]);
+    
+    console.log(`🕒 Orari default: ${startHour}:00 - ${endHour}:00`);
+    
+    // Validazione orari default
+    if (startHour < endHour) {
+        for (let h = startHour; h < endHour; h++) {
+            hours.push(h);
+        }
+    } else {
+        console.error("❌ Orari default non validi:", startHour, endHour);
+        // CORREZIONE: Anche per i default, se sono invertiti, correggi
+        if (endHour < startHour) {
+            console.warn("⚠️ Orari default invertiti, correggo");
+            for (let h = endHour; h < startHour; h++) {
                 hours.push(h);
             }
-        } else {
-            console.error("❌ Orari default non validi:", startHour, endHour);
         }
+    }
 
-        console.log("📅 Ore generate (default):", hours);
-        return hours;
-    },
+    console.log("📅 Ore generate (default):", hours);
+    return hours;
+},
 
 
     async loadSlots() {
@@ -867,38 +883,45 @@ const HoursManager = {
         return slots;
     },
 
-    createHourButton(hour, slots) {
-        const btn = document.createElement('button');
-        btn.classList.add('button-3', 'w-button');
-        btn.setAttribute('type', 'button');
+    // AGGIUNGI questo debug nel metodo createHourButton
+createHourButton(hour, slots) {
+    console.log(`🔍 Creando bottone per ora: ${hour}:00`);
+    
+    const btn = document.createElement('button');
+    btn.classList.add('button-3', 'w-button');
+    btn.setAttribute('type', 'button');
 
-        const slot = this.findSlotForHour(slots, hour);
-        const availableSpots = slot ? (slot.capacity - slot.booked_count) : state.currentService.max_capacity_per_slot;
-        const isFull = availableSpots <= 0;
+    const slot = this.findSlotForHour(slots, hour);
+    console.log(`🔍 Slot trovato per ${hour}:00:`, slot);
+    
+    const availableSpots = slot ? (slot.capacity - slot.booked_count) : state.currentService.max_capacity_per_slot;
+    const isFull = availableSpots <= 0;
 
+    console.log(`🔍 Posti disponibili per ${hour}:00:`, availableSpots, "Pieno:", isFull);
 
-        btn.innerHTML = `
-            <div style="font-size: 16px; font-weight: bold;">${hour}:00</div>
-            <div style="font-size: 12px; margin-top: 4px;">
-                ${isFull ? 'Posti esauriti' : ` ${availableSpots} posti liberi`}
-            </div>
-        `;
+    btn.innerHTML = `
+        <div style="font-size: 16px; font-weight: bold;">${hour}:00</div>
+        <div style="font-size: 12px; margin-top: 4px;">
+            ${isFull ? 'Posti esauriti' : ` ${availableSpots} posti liberi`}
+        </div>
+    `;
 
-        if (isFull) {
-            btn.disabled = true;
-            btn.classList.add('disabled');
-            btn.title = "Posti esauriti";
-        } else {
-            btn.addEventListener('click', () => {
-                this.selectHour(hour);
-                PricingManager.update();
+    if (isFull) {
+        btn.disabled = true;
+        btn.classList.add('disabled');
+        btn.title = "Posti esauriti";
+        console.log(`❌ Bottone ${hour}:00 disabilitato - posti esauriti`);
+    } else {
+        btn.addEventListener('click', () => {
+            this.selectHour(hour);
+            PricingManager.update();
+            this.updateNumberInputLimit(availableSpots);
+        });
+        console.log(`✅ Bottone ${hour}:00 abilitato`);
+    }
 
-                this.updateNumberInputLimit(availableSpots);
-            });
-        }
-
-        return btn;
-    },
+    return btn;
+},
 
 
     updateNumberInputLimit(maxAvailableSpots) {
