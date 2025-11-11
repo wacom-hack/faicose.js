@@ -1152,38 +1152,6 @@ const HoursManager = {
         PricingManager.update();
     },
 
-    async preloadArtisanBusyInfo(hours) {
-        const busyInfo = {};
-
-        if (!state.currentService?._artisan) {
-            return busyInfo;
-        }
-
-        const artisanId = state.currentService._artisan.id;
-
-        try {
-            // 🔥 CARICA TUTTE le prenotazioni dell'artigiano per la data
-            const allArtisanBookings = await this.getAllArtisanBookingsForDate(artisanId, state.selectedDate);
-
-            console.log("📊 Tutte le prenotazioni artigiano:", allArtisanBookings);
-
-            // Per ogni ora, verifica se l'artigiano ha QUALSIASI impegno
-            hours.forEach(hour => {
-                const isBusy = this.isArtisanBusyInHour(allArtisanBookings, hour);
-                busyInfo[hour] = isBusy;
-
-                if (isBusy) {
-                    console.log(`🚫 Artigiano occupato alle ${hour}:00 (ha altri impegni)`);
-                }
-            });
-
-        } catch (error) {
-            console.error("❌ Errore nel controllo disponibilità artigiano:", error);
-        }
-
-        return busyInfo;
-    },
-
     isArtisanBusyInHour(allBookings, hour) {
         console.log(`🔍 Verifica occupazione artigiano alle ${hour}:00`);
 
