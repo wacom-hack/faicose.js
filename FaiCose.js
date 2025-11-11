@@ -260,6 +260,25 @@ const API = {
         }
     },
 
+    async getServiceById(serviceId) {
+    const cacheKey = `service_${serviceId}`;
+    const cached = sessionStorage.getItem(cacheKey);
+    if (cached) {
+        const data = JSON.parse(cached);
+        if (Date.now() - data._cached < 3600000) {
+            return data.service;
+        }
+    }
+
+    const service = await this.request(`/services/${serviceId}`);
+    
+    sessionStorage.setItem(cacheKey, JSON.stringify({
+        service,
+        _cached: Date.now()
+    }));
+
+    return service;
+},
 
     async getServiceBySlug(slug) {
         const cacheKey = `service_${slug}`;
@@ -845,7 +864,176 @@ const HoursManager = {
             this.disableNextButton();
         }
     },
+    
+    async preloadArtisanBusyInfo(hours) {
+    const busyInfo = {};
 
+    if (!state.currentService?._artisan) {
+        return busyInfo;
+    }
+
+    const artisanId = state.currentService._artisan.id;
+    
+    try {
+        // 🔥 CARICA TUTTI gli slot occupati dell'artigiano per la data
+        const allArtisanSlots = await this.getAllArtisanSlotsForDate(artisanId, state.selectedDate);
+        
+        console.log("📊 Slot occupati artigiano:", allArtisanSlots);
+
+        // Per ogni ora, verifica se l'artigiano ha QUALSIASI slot occupato
+        hours.forEach(hour => {
+            const isBusy = this.isArtisanBusyInHour(allArtisanSlots, hour);
+            busyInfo[hour] = isBusy;
+            
+            if (isBusy) {
+                console.log(`🚫 Artigiano occupato alle ${hour}:00 (slot occupato)`);
+            }
+        });
+
+    } catch (error) {
+        console.error("❌ Errore nel controllo disponibilità artigiano:", error);
+    }
+
+    return busyInfo;
+},
+
+async getAllArtisanSlotsForDate(artisanId, date) {
+    const cacheKey = `artisan-slots-${artisanId}-${Utils.formatDateISO(date)}`;
+    const cached = CacheManager.getArtisanBookings(artisanId, date);
+    if (cached) return cached;
+    
+    console.log(`📡 Caricamento slot occupati artigiano ${artisanId} per ${Utils.formatDateISO(date)}`);
+    
+    try {
+        // 1. PRIMA: Carica tutte le prenotazioni per la data
+        const allBookings = await API.getAllBookings();
+        const dateStr = Utils.formatDateISO(date);
+        
+        console.log("📊 Totale prenotazioni caricate:", allBookings.length);
+        
+        // Filtra per data
+        const dailyBookings = allBookings.filter(booking => {
+            if (!booking || !booking.date) return false;
+            
+            let bookingDateStr;
+            if (typeof booking.date === 'string') {
+                bookingDateStr = booking.date;
+            } else {
+                bookingDateStr = Utils.formatDateISO(new Date(booking.date));
+            }
+            
+            return bookingDateStr === dateStr;
+        });
+        
+        console.log(`📅 Prenotazioni per ${dateStr}: ${dailyBookings.length}`);
+        
+        if (dailyBookings.length === 0) {
+            CacheManager.setArtisanBookings(artisanId, date, []);
+            return [];
+        }
+        
+        // 2. SECONDO: Carica tutti gli slot correlati a queste prenotazioni
+        const slotIds = dailyBookings.map(b => b.slot_id).filter(id => id);
+        console.log("🎯 Slot IDs da verificare:", slotIds);
+        
+        if (slotIds.length === 0) {
+            CacheManager.setArtisanBookings(artisanId, date, []);
+            return [];
+        }
+        
+        // 3. TERZO: Carica gli slot e filtra per artigiano
+        const artisanSlots = [];
+        
+        for (const slotId of slotIds) {
+            try {
+                const slot = await this.getSlotWithService(slotId);
+                
+                if (slot && slot._service) {
+                    // VERIFICA: Lo slot appartiene all'artigiano?
+                    const belongsToArtisan = slot._service.artisan_id === artisanId;
+                    
+                    if (belongsToArtisan) {
+                        console.log(`✅ Slot occupato artigiano:`, {
+                            slot_id: slot.id,
+                            service: slot._service.name,
+                            service_id: slot._service.id,
+                            start_time: slot.start_time,
+                            artisan_id: slot._service.artisan_id
+                        });
+                        artisanSlots.push(slot);
+                    }
+                }
+            } catch (error) {
+                console.warn(`⚠️ Errore nel caricamento slot ${slotId}:`, error);
+            }
+        }
+        
+        console.log(`🎯 Slot occupati artigiano trovati: ${artisanSlots.length}`, artisanSlots);
+        
+        // Salva in cache
+        CacheManager.setArtisanBookings(artisanId, date, artisanSlots);
+        
+        return artisanSlots;
+        
+    } catch (error) {
+        console.error("❌ Errore nel caricamento slot artigiano:", error);
+        return [];
+    }
+},
+
+
+async getSlotWithService(slotId) {
+    try {
+        const slot = await API.request(`/slot/${slotId}`);
+        
+        if (slot && slot.service_id) {
+            // Carica il servizio collegato allo slot
+            const service = await API.getServiceById(slot.service_id);
+            slot._service = service;
+        }
+        
+        return slot;
+    } catch (error) {
+        console.error(`❌ Errore nel caricamento slot ${slotId}:`, error);
+        return null;
+    }
+},
+
+// METODO AUSILIARIO: Verifica se l'artigiano è occupato in un'ora specifica
+isArtisanBusyInHour(artisanSlots, hour) {
+    console.log(`🔍 Verifica slot occupati artigiano alle ${hour}:00`);
+    
+    if (!artisanSlots || artisanSlots.length === 0) {
+        return false;
+    }
+    
+    // Crea timestamp per l'ora selezionata
+    const targetTimestamp = Utils.createTimestamp(state.selectedDate, hour) / 1000;
+    
+    // Cerca slot che iniziano in quest'ora
+    const hasSlotInHour = artisanSlots.some(slot => {
+        if (!slot.start_time) return false;
+        
+        const slotStartTime = slot.start_time;
+        const slotHour = new Date(slotStartTime * 1000).getHours();
+        
+        const hourMatches = slotHour === hour;
+        
+        if (hourMatches) {
+            console.log(`🎯 Trovato slot occupato:`, {
+                slot_id: slot.id,
+                service: slot._service?.name,
+                slot_hour: slotHour,
+                target_hour: hour,
+                start_time: slotStartTime
+            });
+        }
+        
+        return hourMatches;
+    });
+    
+    return hasSlotInHour;
+},
     getAvailableHours() {
         const hours = [];
         const availability = state.currentService._availability;
@@ -931,20 +1119,21 @@ createHourButton(hour, slots, isArtisanBusy = false) {
     const slot = this.findSlotForHour(slots, hour);
     const availableSpots = slot ? (slot.capacity - slot.booked_count) : state.currentService.max_capacity_per_slot;
 
-    // 🔥 MODIFICA: Artigiano occupato ha priorità assoluta
+    // 🔥 PRIORITÀ ASSOLUTA: Artigiano occupato
     const isFull = isArtisanBusy || availableSpots <= 0;
 
-    let statusText, statusTitle;
+    let statusText, statusTitle, buttonStyle = '';
+    
     if (isArtisanBusy) {
-        statusText = 'Artigiano occupato';
-        statusTitle = 'L\'artigiano ha già altri impegni in questo orario';
-        btn.style.opacity = '0.6';
-        btn.style.backgroundColor = '#f3f4f6';
+        statusText = '❌ Artigiano occupato';
+        statusTitle = 'L\'artigiano ha già altri workshop in questo orario';
+        buttonStyle = 'style="background-color: #fef2f2; color: #dc2626; border-color: #fca5a5; opacity: 0.7;"';
     } else if (availableSpots <= 0) {
-        statusText = 'Posti esauriti';
+        statusText = '⚠️ Posti esauriti';
         statusTitle = 'Tutti i posti per questo orario sono occupati';
+        buttonStyle = 'style="opacity: 0.5;"';
     } else {
-        statusText = `${availableSpots} posti liberi`;
+        statusText = `✅ ${availableSpots} posti liberi`;
         statusTitle = '';
     }
 
@@ -952,6 +1141,10 @@ createHourButton(hour, slots, isArtisanBusy = false) {
         <div style="font-size: 16px; font-weight: bold;">${hour}:00</div>
         <div style="font-size: 12px; margin-top: 4px;">${statusText}</div>
     `;
+
+    if (buttonStyle) {
+        btn.setAttribute('style', buttonStyle.replace(/style="|"/g, ''));
+    }
 
     if (isFull) {
         btn.disabled = true;
