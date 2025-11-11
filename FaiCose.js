@@ -377,6 +377,17 @@ const API = {
     async getAllBookings() {
         return await this.request('/booking');
     },
+    async getServiceBookings(serviceId, date, hour) {
+        const dateStr = Utils.formatDateISO(date);
+        let url = `/booking?service_id=${serviceId}&date=${dateStr}`;
+        
+        if (hour !== null) {
+            const timestamp = Utils.createTimestamp(date, hour) / 1000;
+            url += `&start_time=${timestamp}`;
+        }
+        
+        return await this.request(url);
+    }
 };
 
 // CACHE MANAGEMENT
