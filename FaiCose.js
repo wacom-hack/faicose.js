@@ -758,7 +758,7 @@ const HoursManager = {
             }
 
             const slots = await this.loadSlots();
-            
+
             // NUOVO: Pre-carica le informazioni di occupazione dell'artigiano
             const artisanBusyInfo = await this.preloadArtisanBusyInfo(hours);
 
@@ -891,31 +891,31 @@ const HoursManager = {
     },
 
     async preloadArtisanBusyInfo(hours) {
-           const busyInfo = {};
-    
-    // USA IL NOME CORRETTO DELL'ADDON
-    if (!state.currentService?._artisan?._service_of_artisan_2) { // ⬅️ CORRETTO
-        console.log("❌ Nessuna info servizi artigiano disponibile");
-        console.log("🔍 Artigiano:", state.currentService?._artisan);
-        console.log("🔍 Chiavi artigiano:", state.currentService?._artisan ? Object.keys(state.currentService._artisan) : "Nessun artigiano");
-        return busyInfo;
-    }
-    
-    const artisanServices = state.currentService._artisan._service_of_artisan_2; // ⬅️ CORRETTO
-    const currentServiceId = state.currentService.id;
-    
-    console.log("📦 Servizi dell'artigiano:", artisanServices.map(s => `${s.name} (ID: ${s.id})`));
-        
+        const busyInfo = {};
+
+        // USA IL NOME CORRETTO DELL'ADDON
+        if (!state.currentService?._artisan?._service_of_artisan_2) { // ⬅️ CORRETTO
+            console.log("❌ Nessuna info servizi artigiano disponibile");
+            console.log("🔍 Artigiano:", state.currentService?._artisan);
+            console.log("🔍 Chiavi artigiano:", state.currentService?._artisan ? Object.keys(state.currentService._artisan) : "Nessun artigiano");
+            return busyInfo;
+        }
+
+        const artisanServices = state.currentService._artisan._service_of_artisan_2; // ⬅️ CORRETTO
+        const currentServiceId = state.currentService.id;
+
+        console.log("📦 Servizi dell'artigiano:", artisanServices.map(s => `${s.name} (ID: ${s.id})`));
+
         // Filtra gli altri servizi (escludi quello corrente)
         const otherServices = artisanServices.filter(service => service.id !== currentServiceId);
-        
+
         if (otherServices.length === 0) {
             console.log("✅ Artigiano ha solo questo servizio, nessun conflitto possibile");
             return busyInfo;
         }
-        
+
         console.log(`🔍 Verifico ${otherServices.length} altri servizi per conflitti:`, otherServices.map(s => s.name));
-        
+
         // Per ogni ora, verifica se ci sono prenotazioni negli altri servizi
         const promises = hours.map(async (hour) => {
             try {
@@ -926,50 +926,60 @@ const HoursManager = {
                 return { hour, isBusy: false };
             }
         });
-        
+
         const results = await Promise.all(promises);
-        
+
         // Converti in mappa per accesso rapido
         results.forEach(result => {
             busyInfo[result.hour] = result.isBusy;
         });
-        
+
         console.log("📅 Info occupazione artigiano:", busyInfo);
         return busyInfo;
     },
 
 async checkArtisanConflicts(otherServices, hour) {
-        const timestamp = Utils.createTimestamp(state.selectedDate, hour) / 1000;
-        const dateStr = Utils.formatDateISO(state.selectedDate);
-        
-        console.log(`🔍 Verifico conflitti per ${hour}:00 (timestamp: ${timestamp})`);
-        
-        // Verifica ogni servizio in parallelo
-        const promises = otherServices.map(async (service) => {
-            try {
-                console.log(`🔍 Verifico servizio "${service.name}" (ID: ${service.id}) alle ${hour}:00`);
-                const bookings = await API.getServiceBookings(service.id, state.selectedDate, hour);
-                const hasBooking = bookings && bookings.length > 0;
-                
-                if (hasBooking) {
-                    console.log(`🚫 CONFLITTO TROVATO: servizio "${service.name}" ha ${bookings.length} prenotazioni alle ${hour}:00`);
-                }
-                
-                return hasBooking;
-            } catch (error) {
-                console.error(`Errore nel verificare servizio ${service.id}:`, error);
-                return false;
+    const timestamp = Utils.createTimestamp(state.selectedDate, hour) / 1000;
+    const dateStr = Utils.formatDateISO(state.selectedDate);
+    
+    console.log(`🔍 Verifico conflitti per ${hour}:00 (timestamp: ${timestamp}, data: ${dateStr})`);
+    
+    // Verifica ogni servizio in parallelo
+    const promises = otherServices.map(async (service) => {
+        try {
+            console.log(`🔍 Verifico servizio "${service.name}" (ID: ${service.id}) alle ${hour}:00`);
+            
+            // DEBUG: Aggiungi log della chiamata API
+            console.log(`📡 Chiamata API: /bookings?service_id=${service.id}&date=${dateStr}&start_time=${timestamp}`);
+            
+            const bookings = await API.getServiceBookings(service.id, state.selectedDate, hour);
+            
+            console.log(`📊 Risposta API per servizio ${service.id}:`, bookings);
+            
+            const hasBooking = bookings && bookings.length > 0;
+            
+            if (hasBooking) {
+                console.log(`🚫 CONFLITTO TROVATO: servizio "${service.name}" ha ${bookings.length} prenotazioni alle ${hour}:00`);
+                console.log("📋 Dettagli prenotazioni:", bookings);
+            } else {
+                console.log(`✅ Nessun conflitto per servizio "${service.name}" alle ${hour}:00`);
             }
-        });
-        
-        const results = await Promise.all(promises);
-        
-        // Se almeno un servizio ha prenotazioni, c'è conflitto
-        const hasConflict = results.some(hasBooking => hasBooking);
-        console.log(`🔍 Risultato finale conflitto per ${hour}:00:`, hasConflict);
-        
-        return hasConflict;
-    },
+            
+            return hasBooking;
+        } catch (error) {
+            console.error(`❌ Errore nel verificare servizio ${service.id}:`, error);
+            return false;
+        }
+    });
+    
+    const results = await Promise.all(promises);
+    
+    // Se almeno un servizio ha prenotazioni, c'è conflitto
+    const hasConflict = results.some(hasBooking => hasBooking);
+    console.log(`🔍 Risultato finale conflitto per ${hour}:00:`, hasConflict);
+    
+    return hasConflict;
+},
 
     // AGGIUNGI questo debug nel metodo createHourButton
     createHourButton(hour, slots, isArtisanBusy = false) {
@@ -979,7 +989,7 @@ async checkArtisanConflicts(otherServices, hour) {
 
         const slot = this.findSlotForHour(slots, hour);
         const availableSpots = slot ? (slot.capacity - slot.booked_count) : state.currentService.max_capacity_per_slot;
-        
+
         const isFull = availableSpots <= 0 || isArtisanBusy;
 
         // Testo diverso per conflitto artigiano vs posti esauriti
@@ -1524,12 +1534,12 @@ const ServiceLoader = {
             console.log(`🔄 Caricamento servizio: ${serviceSlug}`);
             state.currentService = await API.getServiceBySlug(serviceSlug);
             console.log("✅ Servizio caricato:", state.currentService);
-            
+
             // DEBUG: Verifica il nuovo addon - CORREGGI IL NOME DELLA PROPRIETÀ
             if (state.currentService._artisan) {
                 console.log("👨‍🔧 Artigiano:", state.currentService._artisan);
                 console.log("📦 Servizi artigiano (_service_of_artisan_2):", state.currentService._artisan._service_of_artisan_2); // ⬅️ CORRETTO
-                
+
                 if (state.currentService._artisan._service_of_artisan_2) { // ⬅️ CORRETTO
                     const otherServices = state.currentService._artisan._service_of_artisan_2 // ⬅️ CORRETTO
                         .filter(s => s.id !== state.currentService.id);
@@ -1538,7 +1548,7 @@ const ServiceLoader = {
                     console.log("❌ _service_of_artisan_2 non trovato, chiavi disponibili:", Object.keys(state.currentService._artisan));
                 }
             }
-            
+
             state.selectedDate = null;
             state.selectedHour = null;
             state.currentDate = new Date();
