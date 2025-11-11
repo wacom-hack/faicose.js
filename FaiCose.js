@@ -897,6 +897,7 @@ const HoursManager = {
     return busyInfo;
 },
 
+// MODIFICA il metodo getAllArtisanSlotsForDate
 async getAllArtisanSlotsForDate(artisanId, date) {
     const cacheKey = `artisan-slots-${artisanId}-${Utils.formatDateISO(date)}`;
     const cached = CacheManager.getArtisanBookings(artisanId, date);
@@ -905,38 +906,58 @@ async getAllArtisanSlotsForDate(artisanId, date) {
     console.log(`📡 Caricamento slot occupati artigiano ${artisanId} per ${Utils.formatDateISO(date)}`);
     
     try {
-        // 1. PRIMA: Carica tutte le prenotazioni per la data
+        // 1. PRIMA: Carica tutte le prenotazioni
         const allBookings = await API.getAllBookings();
         const dateStr = Utils.formatDateISO(date);
         
         console.log("📊 Totale prenotazioni caricate:", allBookings.length);
         
-        // Filtra per data
+        // 🔥 CORREZIONE: Filtro data MIGLIORATO
         const dailyBookings = allBookings.filter(booking => {
-            if (!booking || !booking.date) return false;
+            if (!booking || !booking.date) {
+                console.log("❌ Booking senza data:", booking);
+                return false;
+            }
             
+            // CONVERTI la data del booking in stringa ISO per il confronto
             let bookingDateStr;
             if (typeof booking.date === 'string') {
                 bookingDateStr = booking.date;
             } else {
-                bookingDateStr = Utils.formatDateISO(new Date(booking.date));
+                // Se è un timestamp o altro formato
+                const bookingDate = new Date(booking.date);
+                bookingDateStr = Utils.formatDateISO(bookingDate);
             }
             
-            return bookingDateStr === dateStr;
+            const dateMatches = bookingDateStr === dateStr;
+            
+            // 🔥 DEBUG: Mostra le prenotazioni che MATCHANO
+            if (dateMatches) {
+                console.log(`✅ PRENOTAZIONE TROVATA per ${dateStr}:`, {
+                    id: booking.id,
+                    date: booking.date,
+                    time: booking.time,
+                    slot_id: booking.slot_id
+                });
+            }
+            
+            return dateMatches;
         });
         
-        console.log(`📅 Prenotazioni per ${dateStr}: ${dailyBookings.length}`);
+        console.log(`📅 Prenotazioni TROVATE per ${dateStr}: ${dailyBookings.length}`, dailyBookings);
         
         if (dailyBookings.length === 0) {
+            console.log(`❌ Nessuna prenotazione trovata per ${dateStr}`);
             CacheManager.setArtisanBookings(artisanId, date, []);
             return [];
         }
         
-        // 2. SECONDO: Carica tutti gli slot correlati a queste prenotazioni
-        const slotIds = dailyBookings.map(b => b.slot_id).filter(id => id);
-        console.log("🎯 Slot IDs da verificare:", slotIds);
+        // 2. SECONDO: Estrai gli slot IDs
+        const slotIds = [...new Set(dailyBookings.map(b => b.slot_id).filter(id => id && id !== 0))];
+        console.log("🎯 Slot IDs unici da verificare:", slotIds);
         
         if (slotIds.length === 0) {
+            console.log("❌ Nessuno slot ID valido trovato");
             CacheManager.setArtisanBookings(artisanId, date, []);
             return [];
         }
@@ -946,9 +967,17 @@ async getAllArtisanSlotsForDate(artisanId, date) {
         
         for (const slotId of slotIds) {
             try {
+                console.log(`🔍 Caricamento slot ${slotId}...`);
                 const slot = await this.getSlotWithService(slotId);
                 
                 if (slot && slot._service) {
+                    console.log(`📦 Slot ${slotId} servizio:`, {
+                        service_id: slot._service.id,
+                        service_name: slot._service.name,
+                        artisan_id: slot._service.artisan_id,
+                        target_artisan: artisanId
+                    });
+                    
                     // VERIFICA: Lo slot appartiene all'artigiano?
                     const belongsToArtisan = slot._service.artisan_id === artisanId;
                     
@@ -961,7 +990,11 @@ async getAllArtisanSlotsForDate(artisanId, date) {
                             artisan_id: slot._service.artisan_id
                         });
                         artisanSlots.push(slot);
+                    } else {
+                        console.log(`❌ Slot ${slotId} non appartiene all'artigiano ${artisanId}`);
                     }
+                } else {
+                    console.log(`⚠️ Slot ${slotId} senza servizio associato`);
                 }
             } catch (error) {
                 console.warn(`⚠️ Errore nel caricamento slot ${slotId}:`, error);
@@ -979,6 +1012,27 @@ async getAllArtisanSlotsForDate(artisanId, date) {
         console.error("❌ Errore nel caricamento slot artigiano:", error);
         return [];
     }
+},
+
+// AGGIUNGI questo metodo di debug per verificare le date
+debugBookingDates(allBookings, targetDateStr) {
+    console.log("🔍 DEBUG DATE - Tutte le prenotazioni:");
+    allBookings.forEach(booking => {
+        if (booking && booking.date) {
+            let bookingDateStr;
+            if (typeof booking.date === 'string') {
+                bookingDateStr = booking.date;
+            } else {
+                const bookingDate = new Date(booking.date);
+                bookingDateStr = Utils.formatDateISO(bookingDate);
+            }
+            
+            const isTargetDate = bookingDateStr === targetDateStr;
+            const marker = isTargetDate ? '🎯 TARGET' : '     ';
+            
+            console.log(`${marker} ID:${booking.id}, Date:${booking.date} → ${bookingDateStr}, Time:${booking.time}, Slot:${booking.slot_id}`);
+        }
+    });
 },
 
 
@@ -1001,26 +1055,35 @@ async getSlotWithService(slotId) {
 
 // METODO AUSILIARIO: Verifica se l'artigiano è occupato in un'ora specifica
 isArtisanBusyInHour(artisanSlots, hour) {
-    console.log(`🔍 Verifica slot occupati artigiano alle ${hour}:00`);
+    console.log(`🔍 Verifica ${artisanSlots.length} slot occupati alle ${hour}:00`);
     
     if (!artisanSlots || artisanSlots.length === 0) {
+        console.log("✅ Nessuno slot occupato - artigiano libero");
         return false;
     }
     
     // Crea timestamp per l'ora selezionata
-    const targetTimestamp = Utils.createTimestamp(state.selectedDate, hour) / 1000;
+    const targetTimestamp = Utils.createTimestamp(state.selectedDate, hour);
+    const targetTimestampSeconds = targetTimestamp / 1000; // Converti in secondi
+    
+    console.log(`⏰ Target: ${hour}:00 → ${targetTimestamp}ms → ${targetTimestampSeconds}s`);
     
     // Cerca slot che iniziano in quest'ora
     const hasSlotInHour = artisanSlots.some(slot => {
-        if (!slot.start_time) return false;
+        if (!slot.start_time) {
+            console.log(`⚠️ Slot ${slot.id} senza start_time`);
+            return false;
+        }
         
         const slotStartTime = slot.start_time;
         const slotHour = new Date(slotStartTime * 1000).getHours();
         
+        console.log(`📊 Slot ${slot.id}: start_time=${slotStartTime}s → ${slotHour}:00`);
+        
         const hourMatches = slotHour === hour;
         
         if (hourMatches) {
-            console.log(`🎯 Trovato slot occupato:`, {
+            console.log(`🎯🚫 Trovato slot occupato alle ${hour}:00:`, {
                 slot_id: slot.id,
                 service: slot._service?.name,
                 slot_hour: slotHour,
@@ -1032,6 +1095,7 @@ isArtisanBusyInHour(artisanSlots, hour) {
         return hourMatches;
     });
     
+    console.log(`📋 Risultato verifica ${hour}:00: ${hasSlotInHour ? 'OCCUPATO' : 'LIBERO'}`);
     return hasSlotInHour;
 },
     getAvailableHours() {
