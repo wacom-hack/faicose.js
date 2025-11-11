@@ -923,47 +923,50 @@ const HoursManager = {
         return slots;
     },
 
-    createHourButton(hour, slots, isArtisanBusy = false) {
-        const btn = document.createElement('button');
-        btn.classList.add('button-3', 'w-button');
-        btn.setAttribute('type', 'button');
+createHourButton(hour, slots, isArtisanBusy = false) {
+    const btn = document.createElement('button');
+    btn.classList.add('button-3', 'w-button');
+    btn.setAttribute('type', 'button');
 
-        const slot = this.findSlotForHour(slots, hour);
-        const availableSpots = slot ? (slot.capacity - slot.booked_count) : state.currentService.max_capacity_per_slot;
+    const slot = this.findSlotForHour(slots, hour);
+    const availableSpots = slot ? (slot.capacity - slot.booked_count) : state.currentService.max_capacity_per_slot;
 
-        const isFull = availableSpots <= 0 || isArtisanBusy;
+    // 🔥 MODIFICA: Artigiano occupato ha priorità assoluta
+    const isFull = isArtisanBusy || availableSpots <= 0;
 
-        let statusText, statusTitle;
-        if (isArtisanBusy) {
-            statusText = 'Artigiano occupato';
-            statusTitle = 'L\'artigiano ha già un altro workshop in questo orario';
-        } else if (availableSpots <= 0) {
-            statusText = 'Posti esauriti';
-            statusTitle = 'Tutti i posti per questo orario sono occupati';
-        } else {
-            statusText = `${availableSpots} posti liberi`;
-            statusTitle = '';
-        }
+    let statusText, statusTitle;
+    if (isArtisanBusy) {
+        statusText = 'Artigiano occupato';
+        statusTitle = 'L\'artigiano ha già altri impegni in questo orario';
+        btn.style.opacity = '0.6';
+        btn.style.backgroundColor = '#f3f4f6';
+    } else if (availableSpots <= 0) {
+        statusText = 'Posti esauriti';
+        statusTitle = 'Tutti i posti per questo orario sono occupati';
+    } else {
+        statusText = `${availableSpots} posti liberi`;
+        statusTitle = '';
+    }
 
-        btn.innerHTML = `
-            <div style="font-size: 16px; font-weight: bold;">${hour}:00</div>
-            <div style="font-size: 12px; margin-top: 4px;">${statusText}</div>
-        `;
+    btn.innerHTML = `
+        <div style="font-size: 16px; font-weight: bold;">${hour}:00</div>
+        <div style="font-size: 12px; margin-top: 4px;">${statusText}</div>
+    `;
 
-        if (isFull) {
-            btn.disabled = true;
-            btn.classList.add('disabled');
-            btn.title = statusTitle;
-        } else {
-            btn.addEventListener('click', () => {
-                this.selectHour(hour);
-                PricingManager.update();
-                this.updateNumberInputLimit(availableSpots);
-            });
-        }
+    if (isFull) {
+        btn.disabled = true;
+        btn.classList.add('disabled');
+        btn.title = statusTitle;
+    } else {
+        btn.addEventListener('click', () => {
+            this.selectHour(hour);
+            PricingManager.update();
+            this.updateNumberInputLimit(availableSpots);
+        });
+    }
 
-        return btn;
-    },
+    return btn;
+},
 
     findSlotForHour(slots, hour) {
         const startTime = Utils.createTimestamp(state.selectedDate, hour) / 1000;
@@ -1007,109 +1010,141 @@ const HoursManager = {
         PricingManager.update();
     },
 
-    async preloadArtisanBusyInfo(hours) {
-        const busyInfo = {};
+async preloadArtisanBusyInfo(hours) {
+    const busyInfo = {};
 
-        if (!state.currentService?._artisan?._service_of_artisan_2) {
-            return busyInfo;
-        }
-
-        const artisanId = state.currentService._artisan.id;
-        const artisanServices = state.currentService._artisan._service_of_artisan_2;
-        const currentServiceId = state.currentService.id;
-        const otherServices = artisanServices.filter(service => service.id !== currentServiceId);
-
-        if (otherServices.length === 0) return busyInfo;
-
-        console.log(`🔍 Verifico ${otherServices.length} altri servizi per conflitti`);
-
-        // 🔥 OTTIMIZZAZIONE: Una sola chiamata API per tutta la giornata
-        try {
-            const allBookings = await this.getAllArtisanBookingsForDate(artisanId, state.selectedDate);
-
-            // 🔥 TEST MANUALE: Verifica se ci sono prenotazioni
-            console.log("🎯 TEST MANUALE PRENOTAZIONI:");
-            console.log("Data selezionata:", Utils.formatDateISO(state.selectedDate));
-            console.log("Tutte le prenotazioni della giornata:", allBookings);
-
-            // Cerca specificamente la prenotazione di "Carta a Colla" (ID: 81)
-            const cartaCollaBookings = allBookings.filter(b => b.service_id === 81);
-            console.log("📋 Prenotazioni Carta a Colla (ID: 81):", cartaCollaBookings);
-
-            if (cartaCollaBookings.length > 0) {
-                cartaCollaBookings.forEach(booking => {
-                    console.log("🔍 Dettaglio prenotazione Carta a Colla:", booking);
-                    console.log("Service ID:", booking.service_id);
-                    console.log("Selected Date:", booking.selected_date);
-                    console.log("Selected Hour:", booking.selected_hour);
-                    console.log("Tipo Selected Hour:", typeof booking.selected_hour);
-
-                    // Calcola l'ora
-                    let bookingHour;
-                    if (typeof booking.selected_hour === 'number') {
-                        bookingHour = new Date(booking.selected_hour * 1000).getHours();
-                    } else if (typeof booking.selected_hour === 'string') {
-                        bookingHour = parseInt(booking.selected_hour.split(':')[0]);
-                    } else {
-                        bookingHour = new Date(booking.selected_hour).getHours();
-                    }
-                    console.log("⏰ Ora calcolata:", bookingHour);
-                });
-            } else {
-                console.log("❌ Nessuna prenotazione trovata per Carta a Colla (ID: 81)");
-            }
-
-            // Per ogni ora, verifica conflitti nella cache
-            hours.forEach(hour => {
-                const hasConflict = this.checkConflictsFromCache(allBookings, otherServices, hour);
-                busyInfo[hour] = hasConflict;
-            });
-
-        } catch (error) {
-            console.error("❌ Errore nel caricamento prenotazioni:", error);
-        }
-
-        console.log("📅 Info occupazione artigiano:", busyInfo);
+    if (!state.currentService?._artisan) {
         return busyInfo;
-    },
+    }
+
+    const artisanId = state.currentService._artisan.id;
+    
+    try {
+        // 🔥 CARICA TUTTE le prenotazioni dell'artigiano per la data
+        const allArtisanBookings = await this.getAllArtisanBookingsForDate(artisanId, state.selectedDate);
+        
+        console.log("📊 Tutte le prenotazioni artigiano:", allArtisanBookings);
+
+        // Per ogni ora, verifica se l'artigiano ha QUALSIASI impegno
+        hours.forEach(hour => {
+            const isBusy = this.isArtisanBusyInHour(allArtisanBookings, hour);
+            busyInfo[hour] = isBusy;
+            
+            if (isBusy) {
+                console.log(`🚫 Artigiano occupato alle ${hour}:00 (ha altri impegni)`);
+            }
+        });
+
+    } catch (error) {
+        console.error("❌ Errore nel controllo disponibilità artigiano:", error);
+    }
+
+    return busyInfo;
+},
+
+isArtisanBusyInHour(allBookings, hour) {
+    console.log(`🔍 Verifica occupazione artigiano alle ${hour}:00`);
+    
+    // Cerca QUALSIASI prenotazione dell'artigiano in quest'ora
+    const hasAnyBooking = allBookings.some(booking => {
+        if (!booking) return false;
+        
+        // ESTRAI l'ora dalla prenotazione
+        let bookingHour;
+        
+        if (booking.time) {
+            // Timestamp in millisecondi
+            bookingHour = new Date(booking.time).getHours();
+        } else if (booking.selected_hour) {
+            // Timestamp in secondi o millisecondi
+            const timestamp = typeof booking.selected_hour === 'number' ? 
+                (booking.selected_hour > 10000000000 ? booking.selected_hour : booking.selected_hour * 1000) : 
+                new Date(booking.selected_hour).getTime();
+            bookingHour = new Date(timestamp).getHours();
+        } else if (booking.start_time) {
+            // Timestamp in secondi
+            bookingHour = new Date(booking.start_time * 1000).getHours();
+        } else {
+            return false;
+        }
+        
+        const hourMatches = bookingHour === hour;
+        
+        if (hourMatches) {
+            console.log(`🎯 Trovato conflitto:`, {
+                service: booking.service_id,
+                hour: bookingHour,
+                booking: booking
+            });
+        }
+        
+        return hourMatches;
+    });
+    
+    return hasAnyBooking;
+},
 
 async getAllArtisanBookingsForDate(artisanId, date) {
     const cached = CacheManager.getArtisanBookings(artisanId, date);
     if (cached) return cached;
     
-    console.log(`📡 Caricamento prenotazioni artigiano ${artisanId} per ${Utils.formatDateISO(date)}`);
+    console.log(`📡 Caricamento TUTTE le prenotazioni artigiano ${artisanId} per ${Utils.formatDateISO(date)}`);
     
-    const allBookings = await API.getAllBookings();
-    const dateStr = Utils.formatDateISO(date);
-    
-    console.log("🔍 Tutte le prenotazioni caricate:", allBookings.length);
-    
-    // Filtra solo le prenotazioni di questa data - CON LA STRUTTURA CORRETTA
-    const dailyBookings = allBookings.filter(booking => {
-        if (!booking || !booking.date) return false;
+    try {
+        // 🔥 MODIFICA: Carica TUTTE le prenotazioni senza filtri per servizio
+        const allBookings = await API.getAllBookings();
+        const dateStr = Utils.formatDateISO(date);
         
-        // Usa il campo "date" invece di "selected_date"
-        let bookingDateStr;
-        if (typeof booking.date === 'string') {
-            bookingDateStr = booking.date;
-        } else {
-            bookingDateStr = Utils.formatDateISO(new Date(booking.date));
-        }
+        console.log("📊 Totale prenotazioni caricate:", allBookings.length);
         
-        const matches = bookingDateStr === dateStr;
-        if (matches) {
-            console.log(`✅ Prenotazione trovata per ${dateStr}:`, booking);
-        }
+        // 🔥 MODIFICA: Filtra per data E per artigiano (tramite service relation)
+        const artisanBookings = allBookings.filter(booking => {
+            if (!booking || !booking.date) return false;
+            
+            // 1. Verifica corrispondenza data
+            let bookingDateStr;
+            if (typeof booking.date === 'string') {
+                bookingDateStr = booking.date;
+            } else {
+                bookingDateStr = Utils.formatDateISO(new Date(booking.date));
+            }
+            
+            const dateMatches = bookingDateStr === dateStr;
+            if (!dateMatches) return false;
+            
+            // 2. Verifica che la prenotazione appartenga all'artigiano
+            // (assumendo che booking.service_id corrisponda a un servizio dell'artigiano)
+            if (state.currentService?._artisan?._service_of_artisan_2) {
+                const artisanServices = state.currentService._artisan._service_of_artisan_2;
+                const belongsToArtisan = artisanServices.some(service => service.id === booking.service_id);
+                
+                if (belongsToArtisan) {
+                    console.log(`✅ Prenotazione artigiano trovata:`, {
+                        service: booking.service_id,
+                        hour: booking.selected_hour,
+                        booking: booking
+                    });
+                }
+                
+                return belongsToArtisan;
+            }
+            
+            return false;
+        });
         
-        return matches;
-    });
-    
-    // Salva in cache
-    CacheManager.setArtisanBookings(artisanId, date, dailyBookings);
-    
-    console.log(`📊 Prenotazioni giornaliere trovate per ${dateStr}: ${dailyBookings.length}`, dailyBookings);
-    return dailyBookings;
+        console.log(`📅 Prenotazioni artigiano per ${dateStr}: ${artisanBookings.length}`, artisanBookings);
+        
+        // Salva in cache
+        CacheManager.setArtisanBookings(artisanId, date, artisanBookings);
+        
+        return artisanBookings;
+        
+    } catch (error) {
+        console.error("❌ Errore nel caricamento prenotazioni artigiano:", error);
+        return [];
+    }
 },
+
 
 
 
