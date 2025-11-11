@@ -897,54 +897,39 @@ const HoursManager = {
     return busyInfo;
 },
 
-// MODIFICA il metodo getAllArtisanSlotsForDate
+
 async getAllArtisanSlotsForDate(artisanId, date) {
     const cacheKey = `artisan-slots-${artisanId}-${Utils.formatDateISO(date)}`;
     const cached = CacheManager.getArtisanBookings(artisanId, date);
     if (cached) return cached;
     
-    console.log(`📡 Caricamento slot occupati artigiano ${artisanId} per ${Utils.formatDateISO(date)}`);
+    const dateStr = Utils.formatDateISO(date);
+    console.log(`📡 Caricamento slot occupati artigiano ${artisanId} per ${dateStr}`);
     
     try {
         // 1. PRIMA: Carica tutte le prenotazioni
         const allBookings = await API.getAllBookings();
-        const dateStr = Utils.formatDateISO(date);
         
         console.log("📊 Totale prenotazioni caricate:", allBookings.length);
-        
-        // 🔥 CORREZIONE: Filtro data MIGLIORATO
+
+        // 🔥 CORREZIONE: Filtro data SEMPLIFICATO ma EFFICACE
         const dailyBookings = allBookings.filter(booking => {
-            if (!booking || !booking.date) {
-                console.log("❌ Booking senza data:", booking);
-                return false;
+            if (!booking || !booking.date) return false;
+            
+            // Confronto DIRETTO delle stringhe
+            const bookingDate = String(booking.date).trim();
+            const targetDate = dateStr;
+            
+            const matches = bookingDate === targetDate;
+            
+            if (matches) {
+                console.log(`✅ PRENOTAZIONE TROVATA: ID ${booking.id}, Date: "${bookingDate}"`);
             }
             
-            // CONVERTI la data del booking in stringa ISO per il confronto
-            let bookingDateStr;
-            if (typeof booking.date === 'string') {
-                bookingDateStr = booking.date;
-            } else {
-                // Se è un timestamp o altro formato
-                const bookingDate = new Date(booking.date);
-                bookingDateStr = Utils.formatDateISO(bookingDate);
-            }
-            
-            const dateMatches = bookingDateStr === dateStr;
-            
-            // 🔥 DEBUG: Mostra le prenotazioni che MATCHANO
-            if (dateMatches) {
-                console.log(`✅ PRENOTAZIONE TROVATA per ${dateStr}:`, {
-                    id: booking.id,
-                    date: booking.date,
-                    time: booking.time,
-                    slot_id: booking.slot_id
-                });
-            }
-            
-            return dateMatches;
+            return matches;
         });
         
-        console.log(`📅 Prenotazioni TROVATE per ${dateStr}: ${dailyBookings.length}`, dailyBookings);
+        console.log(`📅 Prenotazioni trovate per ${dateStr}: ${dailyBookings.length}`, dailyBookings);
         
         if (dailyBookings.length === 0) {
             console.log(`❌ Nessuna prenotazione trovata per ${dateStr}`);
@@ -1189,15 +1174,15 @@ createHourButton(hour, slots, isArtisanBusy = false) {
     let statusText, statusTitle, buttonStyle = '';
     
     if (isArtisanBusy) {
-        statusText = '❌ Artigiano occupato';
+        statusText = 'Artigiano occupato';
         statusTitle = 'L\'artigiano ha già altri workshop in questo orario';
         buttonStyle = 'style="background-color: #fef2f2; color: #dc2626; border-color: #fca5a5; opacity: 0.7;"';
     } else if (availableSpots <= 0) {
-        statusText = '⚠️ Posti esauriti';
+        statusText = 'Posti esauriti';
         statusTitle = 'Tutti i posti per questo orario sono occupati';
         buttonStyle = 'style="opacity: 0.5;"';
     } else {
-        statusText = `✅ ${availableSpots} posti liberi`;
+        statusText = `${availableSpots} posti liberi`;
         statusTitle = '';
     }
 
