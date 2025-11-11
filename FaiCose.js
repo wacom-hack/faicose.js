@@ -366,6 +366,12 @@ const API = {
 
         console.error('❌ Formato risposta Stripe non riconosciuto:', response);
         throw new Error('Risposta Stripe non valida: URL mancante');
+    }, 
+
+     async getServiceBookings(serviceId, date, hour) {
+        const dateStr = Utils.formatDateISO(date);
+        const timestamp = Utils.createTimestamp(date, hour) / 1000;
+        return await this.request(`/bookings?service_id=${serviceId}&date=${dateStr}&start_time=${timestamp}`);
     }
 };
 
@@ -882,46 +888,122 @@ getAvailableHours() {
         CacheManager.set(state.currentService.id, state.selectedDate, slots);
         return slots;
     },
+ async preloadArtisanBusyInfo(hours) {
+        const busyInfo = {};
+        
+        if (!state.currentService?._artisan?._services_of_artisan) {
+            console.log("❌ Nessuna info servizi artigiano disponibile");
+            return busyInfo;
+        }
+        
+        const artisanServices = state.currentService._artisan._services_of_artisan;
+        const currentServiceId = state.currentService.id;
+        
+        console.log("🔍 Servizi dell'artigiano:", artisanServices);
+        
+        // Filtra gli altri servizi (escludi quello corrente)
+        const otherServices = artisanServices.filter(service => service.id !== currentServiceId);
+        
+        if (otherServices.length === 0) {
+            console.log("✅ Artigiano ha solo questo servizio, nessun conflitto possibile");
+            return busyInfo;
+        }
+        
+        console.log(`🔍 Verifico ${otherServices.length} altri servizi per conflitti`);
+        
+        // Per ogni ora, verifica se ci sono prenotazioni negli altri servizi
+        const promises = hours.map(async (hour) => {
+            try {
+                const hasConflict = await this.checkArtisanConflicts(otherServices, hour);
+                return { hour, isBusy: hasConflict };
+            } catch (error) {
+                console.error(`Errore nel verificare ora ${hour}:00:`, error);
+                return { hour, isBusy: false };
+            }
+        });
+        
+        const results = await Promise.all(promises);
+        
+        // Converti in mappa per accesso rapido
+        results.forEach(result => {
+            busyInfo[result.hour] = result.isBusy;
+        });
+        
+        console.log("📅 Info occupazione artigiano:", busyInfo);
+        return busyInfo;
+    },
+    
+    async checkArtisanConflicts(otherServices, hour) {
+        const timestamp = Utils.createTimestamp(state.selectedDate, hour) / 1000;
+        const dateStr = Utils.formatDateISO(state.selectedDate);
+        
+        // Verifica ogni servizio in parallelo
+        const promises = otherServices.map(async (service) => {
+            try {
+                const bookings = await API.getServiceBookings(service.id, state.selectedDate, hour);
+                const hasBooking = bookings && bookings.length > 0;
+                
+                if (hasBooking) {
+                    console.log(`🚫 Conflitto trovato: servizio "${service.name}" ha prenotazioni alle ${hour}:00`);
+                }
+                
+                return hasBooking;
+            } catch (error) {
+                console.error(`Errore nel verificare servizio ${service.id}:`, error);
+                return false;
+            }
+        });
+        
+        const results = await Promise.all(promises);
+        
+        // Se almeno un servizio ha prenotazioni, c'è conflitto
+        return results.some(hasBooking => hasBooking);
+    },
 
     // AGGIUNGI questo debug nel metodo createHourButton
-createHourButton(hour, slots) {
-    console.log(`🔍 Creando bottone per ora: ${hour}:00`);
-    
-    const btn = document.createElement('button');
-    btn.classList.add('button-3', 'w-button');
-    btn.setAttribute('type', 'button');
+    createHourButton(hour, slots, isArtisanBusy = false) {
+        const btn = document.createElement('button');
+        btn.classList.add('button-3', 'w-button');
+        btn.setAttribute('type', 'button');
 
-    const slot = this.findSlotForHour(slots, hour);
-    console.log(`🔍 Slot trovato per ${hour}:00:`, slot);
-    
-    const availableSpots = slot ? (slot.capacity - slot.booked_count) : state.currentService.max_capacity_per_slot;
-    const isFull = availableSpots <= 0;
+        const slot = this.findSlotForHour(slots, hour);
+        const availableSpots = slot ? (slot.capacity - slot.booked_count) : state.currentService.max_capacity_per_slot;
+        
+        const isFull = availableSpots <= 0 || isArtisanBusy;
 
-    console.log(`🔍 Posti disponibili per ${hour}:00:`, availableSpots, "Pieno:", isFull);
+        // Testo diverso per conflitto artigiano vs posti esauriti
+        let statusText, statusTitle;
+        if (isArtisanBusy) {
+            statusText = 'Artigiano occupato';
+            statusTitle = 'L\'artigiano ha già un altro workshop in questo orario';
+        } else if (availableSpots <= 0) {
+            statusText = 'Posti esauriti';
+            statusTitle = 'Tutti i posti per questo orario sono occupati';
+        } else {
+            statusText = `${availableSpots} posti liberi`;
+            statusTitle = '';
+        }
 
-    btn.innerHTML = `
-        <div style="font-size: 16px; font-weight: bold;">${hour}:00</div>
-        <div style="font-size: 12px; margin-top: 4px;">
-            ${isFull ? 'Posti esauriti' : ` ${availableSpots} posti liberi`}
-        </div>
-    `;
+        btn.innerHTML = `
+            <div style="font-size: 16px; font-weight: bold;">${hour}:00</div>
+            <div style="font-size: 12px; margin-top: 4px;">${statusText}</div>
+        `;
 
-    if (isFull) {
-        btn.disabled = true;
-        btn.classList.add('disabled');
-        btn.title = "Posti esauriti";
-        console.log(`❌ Bottone ${hour}:00 disabilitato - posti esauriti`);
-    } else {
-        btn.addEventListener('click', () => {
-            this.selectHour(hour);
-            PricingManager.update();
-            this.updateNumberInputLimit(availableSpots);
-        });
-        console.log(`✅ Bottone ${hour}:00 abilitato`);
+        if (isFull) {
+            btn.disabled = true;
+            btn.classList.add('disabled');
+            btn.title = statusTitle;
+        } else {
+            btn.addEventListener('click', () => {
+                this.selectHour(hour);
+                PricingManager.update();
+                this.updateNumberInputLimit(availableSpots);
+            });
+        }
+
+        return btn;
     }
-
-    return btn;
-},
+};
 
 
     updateNumberInputLimit(maxAvailableSpots) {
