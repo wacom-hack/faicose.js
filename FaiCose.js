@@ -939,25 +939,33 @@ const CalendarManager = {
     },
 
     // ⭐ METODO HELPER: Trova rule per data
-    findRuleForDate(date) {
-        const allRules = state.currentService._all_availability_rules;
-        if (!allRules) return null;
+findRuleForDate(date) {
+    const allRules = state.currentService._all_availability_rules;
+    if (!allRules) return null;
 
-        return allRules.find(rule => {
-            const startDate = rule.start_date ? new Date(rule.start_date) : null;
-            const endDate = rule.end_date ? new Date(rule.end_date) : null;
+    console.log(`🔍 DEBUG findRuleForDate: ${Utils.formatDateDDMMYYYY(date)}`);
+    
+    const foundRule = allRules.find(rule => {
+        const startDate = rule.start_date ? new Date(rule.start_date) : null;
+        const endDate = rule.end_date ? new Date(rule.end_date) : null;
 
-            if (startDate && endDate) {
-                // ⭐ MODIFICA: usa < invece di <= (ESCLUSIVO)
-                return date >= startDate && date < endDate;
-            } else if (startDate) {
-                return date >= startDate;
-            } else if (endDate) {
-                return date < endDate; // ⭐ Anche qui <
-            }
-            return true;
-        });
-    },
+        console.log(`   Rule ${rule.id}: ${startDate} - ${endDate}`);
+        
+        if (startDate && endDate) {
+            const matches = date >= startDate && date < endDate;
+            console.log(`   ${Utils.formatDateDDMMYYYY(date)} >= ${Utils.formatDateDDMMYYYY(startDate)} && ${Utils.formatDateDDMMYYYY(date)} < ${Utils.formatDateDDMMYYYY(endDate)} = ${matches}`);
+            return matches;
+        } else if (startDate) {
+            return date >= startDate;
+        } else if (endDate) {
+            return date < endDate;
+        }
+        return true;
+    });
+
+    console.log(`✅ Rule trovata per ${Utils.formatDateDDMMYYYY(date)}:`, foundRule?.id || "Nessuna");
+    return foundRule;
+},
 
     // ⭐⭐ METODO HELPER: Verifica se una rule è VUOTA (scalabile)
     isRuleEmpty(rule) {
