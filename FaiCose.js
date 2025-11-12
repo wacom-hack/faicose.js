@@ -700,6 +700,25 @@ const CalendarManager = {
             firstSelectable.click();
         }
     },
+    // Aggiungi questo metodo a CalendarManager
+    isPeriodFullyBlocked(rule, date) {
+        if (!this.isRuleEmpty(rule)) return false;
+
+        const startDate = rule.start_date ? new Date(rule.start_date) : null;
+        const endDate = rule.end_date ? new Date(rule.end_date) : null;
+        const checkDate = Utils.normalizeDate(date);
+
+        if (startDate && endDate) {
+            return checkDate >= startDate && checkDate <= endDate;
+        } else if (startDate) {
+            return checkDate >= startDate;
+        } else if (endDate) {
+            return checkDate <= endDate;
+        }
+
+        return true; // Se non ci sono date, blocca tutto
+    },
+
     getAvailabilityRules() {
         // ⭐ GESTIONE CACHE: Se non ci sono _all_availability_rules, usa la logica vecchia
         if (!state.currentService._all_availability_rules) {
@@ -806,7 +825,7 @@ const CalendarManager = {
             console.log("✅ Rule attiva:", activeRule.id);
         }
 
-        // ⭐⭐ PROCESSAMENTO MIGLIORATO: Usa il metodo isRuleEmpty
+        // ⭐⭐ PROCESSAMENTO MIGLIORATO
         const defaultDays = state.currentService.working_days || [];
         let specialDays = [];
         let availStart = null;
@@ -823,10 +842,15 @@ const CalendarManager = {
                 availEnd.setHours(23, 59, 59, 999);
             }
 
-            // ⭐⭐ CONTROLLO PRINCIPALE: Se la rule è VUOTA, specialDays rimane []
+            // ⭐⭐ CONTROLLO PRINCIPALE: Se la rule è VUOTA, DISABILITA TUTTO
             if (this.isRuleEmpty(activeRule)) {
-                console.log(`🚨 Rule ${activeRule.id} VUOTA - specialDays = [] (nessun giorno disponibile)`);
-                specialDays = []; // Forza array vuoto - disabilita tutto
+                console.log(`🚨 Rule ${activeRule.id} VUOTA - DISABILITA TUTTO il periodo`);
+                return {
+                    defaultDays: [], // ⬅️ FORZA array vuoto
+                    specialDays: [], // ⬅️ FORZA array vuoto  
+                    availStart: availStart,
+                    availEnd: availEnd
+                };
             }
             // Altrimenti processa normalmente
             else if (activeRule.daily_schedules && activeRule.daily_schedules.length > 0) {
@@ -853,11 +877,11 @@ const CalendarManager = {
             }
         }
 
-        console.log(`📊 RISULTATO FINALE: specialDays =`, specialDays, "defaultDays =", defaultDays);
+        console.log(`📊 RISULTATO FINALE: defaultDays =`, defaultDays, "specialDays =", specialDays);
 
         return {
             defaultDays,
-            specialDays, // ⭐ Questo sarà [] per Rule ID 3 vuota
+            specialDays,
             availStart,
             availEnd
         };
@@ -892,23 +916,14 @@ const CalendarManager = {
             return false;
         }
 
-        // ⭐⭐ CONTROLLO SCALABILE: Cerca la rule per questa data e verifica se è vuota
-        const ruleForThisDate = this.findRuleForDate(date);
-        if (ruleForThisDate && this.isRuleEmpty(ruleForThisDate)) {
-            console.log(`❌ ${Utils.formatDateDDMMYYYY(date)} - Rule ${ruleForThisDate.id} VUOTA - giorno disabilitato`);
+        // ⭐⭐ CONTROLLO PRINCIPALE: Se ENTRAMBI gli array sono vuoti, giorno NON selezionabile
+        if (defaultDays.length === 0 && specialDays.length === 0) {
+            console.log(`❌ ${Utils.formatDateDDMMYYYY(date)} - Nessun giorno disponibile (arrays vuoti)`);
             return false;
         }
 
-        // ⭐ CONTROLLO: Se specialDays è VUOTO (fallback)
-        if (specialDays.length === 0) {
-            console.log(`❌ ${Utils.formatDateDDMMYYYY(date)} - Nessun giorno speciale disponibile - giorno disabilitato`);
-            return false;
-        }
-
-        let currentAvailDays = defaultDays;
+        // ⭐⭐ CONTROLLO RANGE SPECIALE
         let isInSpecialRange = false;
-
-        // Verifica se siamo in un range speciale
         if (availStart || availEnd) {
             const checkDate = Utils.normalizeDate(date);
             isInSpecialRange = true;
@@ -917,14 +932,21 @@ const CalendarManager = {
                 const start = Utils.normalizeDate(availStart);
                 isInSpecialRange = isInSpecialRange && (checkDate >= start);
             }
-
             if (availEnd) {
                 const end = Utils.normalizeDate(availEnd);
                 isInSpecialRange = isInSpecialRange && (checkDate <= end);
             }
+
+            // ⭐⭐ SE siamo in range speciale E specialDays è VUOTO, giorno NON disponibile
+            if (isInSpecialRange && specialDays.length === 0) {
+                console.log(`❌ ${Utils.formatDateDDMMYYYY(date)} - In range speciale ma nessun giorno disponibile`);
+                return false;
+            }
         }
 
-        // Se siamo in range speciale E abbiamo giorni speciali VALIDI, usali
+        let currentAvailDays = defaultDays;
+
+        // Verifica se siamo in un range speciale CON giorni disponibili
         if (isInSpecialRange && specialDays.length > 0) {
             currentAvailDays = specialDays;
             console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} - Usa giorni speciali:`, specialDays);
@@ -940,32 +962,32 @@ const CalendarManager = {
 
     // ⭐ METODO HELPER: Trova rule per data
 findRuleForDate(date) {
-    const allRules = state.currentService._all_availability_rules;
-    if (!allRules) return null;
+        const allRules = state.currentService._all_availability_rules;
+        if (!allRules) return null;
 
-    console.log(`🔍 DEBUG findRuleForDate: ${Utils.formatDateDDMMYYYY(date)}`);
-    
-    const foundRule = allRules.find(rule => {
-        const startDate = rule.start_date ? new Date(rule.start_date) : null;
-        const endDate = rule.end_date ? new Date(rule.end_date) : null;
+        console.log(`🔍 DEBUG findRuleForDate: ${Utils.formatDateDDMMYYYY(date)}`);
 
-        console.log(`   Rule ${rule.id}: ${startDate} - ${endDate}`);
-        
-        if (startDate && endDate) {
-            const matches = date >= startDate && date < endDate;
-            console.log(`   ${Utils.formatDateDDMMYYYY(date)} >= ${Utils.formatDateDDMMYYYY(startDate)} && ${Utils.formatDateDDMMYYYY(date)} < ${Utils.formatDateDDMMYYYY(endDate)} = ${matches}`);
-            return matches;
-        } else if (startDate) {
-            return date >= startDate;
-        } else if (endDate) {
-            return date < endDate;
-        }
-        return true;
-    });
+        const foundRule = allRules.find(rule => {
+            const startDate = rule.start_date ? new Date(rule.start_date) : null;
+            const endDate = rule.end_date ? new Date(rule.end_date) : null;
 
-    console.log(`✅ Rule trovata per ${Utils.formatDateDDMMYYYY(date)}:`, foundRule?.id || "Nessuna");
-    return foundRule;
-},
+            console.log(`   Rule ${rule.id}: ${startDate} - ${endDate}`);
+
+            if (startDate && endDate) {
+                const matches = date >= startDate && date < endDate;
+                console.log(`   ${Utils.formatDateDDMMYYYY(date)} >= ${Utils.formatDateDDMMYYYY(startDate)} && ${Utils.formatDateDDMMYYYY(date)} < ${Utils.formatDateDDMMYYYY(endDate)} = ${matches}`);
+                return matches;
+            } else if (startDate) {
+                return date >= startDate;
+            } else if (endDate) {
+                return date < endDate;
+            }
+            return true;
+        });
+
+        console.log(`✅ Rule trovata per ${Utils.formatDateDDMMYYYY(date)}:`, foundRule?.id || "Nessuna");
+        return foundRule;
+    },
 
     // ⭐⭐ METODO HELPER: Verifica se una rule è VUOTA (scalabile)
     isRuleEmpty(rule) {
