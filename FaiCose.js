@@ -776,10 +776,11 @@ const CalendarManager = {
             }
 
             return {
-                defaultDays,
-                specialDays,
-                availStart,
-                availEnd
+                defaultDays: state.currentService.working_days || [],
+                specialDays: [],
+                availStart: null,
+                availEnd: null,
+                allRules: allRules
             };
         }
 
@@ -917,6 +918,11 @@ const CalendarManager = {
             return false;
         }
 
+        // ⭐⭐ AGGIUNGI DEBUG DETTAGLIATO
+        console.log(`🔍🔍🔍 DEBUG COMPLETO per ${Utils.formatDateDDMMYYYY(date)}`);
+        console.log(`📅 Data: ${date}, Day: ${dayOfWeekStr}`);
+        console.log(`📦 AllRules disponibili:`, allRules?.map(r => ({ id: r.id, start: r.start_date, end: r.end_date, empty: CalendarManager.isRuleEmpty(r) })));
+
         // ⭐⭐ NUOVA LOGICA: Cerca la rule SPECIFICA per questa data
         if (allRules) {
             const ruleForThisDate = allRules.find(rule => {
@@ -934,11 +940,11 @@ const CalendarManager = {
                 return true;
             });
 
-            console.log(`🔍 ${Utils.formatDateDDMMYYYY(date)} - Rule trovata:`, ruleForThisDate?.id || "Nessuna");
+            console.log(`🎯 Rule trovata per ${Utils.formatDateDDMMYYYY(date)}:`, ruleForThisDate?.id || "Nessuna");
 
             // ⭐⭐ SE la rule è VUOTA, disabilita IMMEDIATAMENTE
-            if (ruleForThisDate && this.isRuleEmpty(ruleForThisDate)) {
-                console.log(`🚨 ${Utils.formatDateDDMMYYYY(date)} - Rule ${ruleForThisDate.id} VUOTA - giorno DISABILITATO`);
+            if (ruleForThisDate && CalendarManager.isRuleEmpty(ruleForThisDate)) {
+                console.log(`🚨🚨🚨 ${Utils.formatDateDDMMYYYY(date)} - Rule ${ruleForThisDate.id} VUOTA - giorno DISABILITATO`);
                 return false;
             }
 
@@ -946,6 +952,7 @@ const CalendarManager = {
             if (ruleForThisDate && ruleForThisDate.daily_schedules && ruleForThisDate.daily_schedules.length > 0) {
                 try {
                     let schedules = ruleForThisDate.daily_schedules;
+                    // ⭐⭐ CORREZIONE: Gestisci array di array
                     if (Array.isArray(schedules) && schedules.length > 0 && Array.isArray(schedules[0])) {
                         schedules = schedules.flat();
                     }
@@ -959,16 +966,20 @@ const CalendarManager = {
                         })
                         .filter(day => day && CONFIG.DAY_NAMES.includes(day));
 
-                    console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} - Giorni rule:`, ruleSpecialDays);
+                    console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} - Giorni rule ${ruleForThisDate.id}:`, ruleSpecialDays);
 
                     if (ruleSpecialDays.length > 0) {
                         const isAvailable = ruleSpecialDays.includes(dayOfWeekStr);
-                        console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} (${dayOfWeekStr}) - Disponibile nella rule: ${isAvailable}`);
+                        console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} (${dayOfWeekStr}) - Disponibile nella rule ${ruleForThisDate.id}: ${isAvailable}`);
                         return isAvailable;
+                    } else {
+                        console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} - Rule ${ruleForThisDate.id} ha daily_schedules ma nessun giorno valido`);
                     }
                 } catch (error) {
                     console.error("❌ Errore nel processing daily_schedules:", error);
                 }
+            } else if (ruleForThisDate) {
+                console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} - Rule ${ruleForThisDate.id} senza daily_schedules`);
             }
         }
 
@@ -1110,7 +1121,7 @@ const HoursManager = {
             this.disableNextButton();
         }
     },
- getAvailableHours() {
+    getAvailableHours() {
         const hours = [];
         const dayOfWeekStr = CONFIG.DAY_NAMES[(state.selectedDate.getDay() + 6) % 7];
 
