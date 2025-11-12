@@ -910,85 +910,93 @@ const CalendarManager = {
         return false;
     },
 
-    isDaySelectable(date, today, dayOfWeekStr, defaultDays, specialDays, availStart, availEnd, allRules) {
-        // 1. Controlla se la data è nel passato
-        const dateIsInFuture = !Utils.isDateInPast(date);
-        if (!dateIsInFuture) {
-            console.log(`❌ ${Utils.formatDateDDMMYYYY(date)} - Data passata`);
+isDaySelectable(date, today, dayOfWeekStr, defaultDays, specialDays, availStart, availEnd, allRules) {
+    
+    const dateIsInFuture = !Utils.isDateInPast(date);
+    if (!dateIsInFuture) {
+        console.log(`❌ ${Utils.formatDateDDMMYYYY(date)} - Data passata`);
+        return false;
+    }
+
+    console.log(`🔍🔍🔍 DEBUG COMPLETO per ${Utils.formatDateDDMMYYYY(date)}`);
+    console.log(`📅 Data: ${date}, Day: ${dayOfWeekStr}`);
+    console.log(`📊 DefaultDays: ${defaultDays}, SpecialDays: ${specialDays}`);
+    console.log("📦 AllRules disponibili:", allRules?.map(r => ({id: r.id, start: r.start_date, end: r.end_date, empty: CalendarManager.isRuleEmpty(r)})));
+
+    // ⭐⭐ CONTROLLO PRIORITARIO: Se abbiamo specialDays, usali invece dei defaultDays
+    if (specialDays && specialDays.length > 0) {
+        console.log(`🎯 Usa specialDays per ${Utils.formatDateDDMMYYYY(date)}:`, specialDays);
+        const isAvailableInSpecial = specialDays.includes(dayOfWeekStr);
+        console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} (${dayOfWeekStr}) - Disponibile in specialDays: ${isAvailableInSpecial}`);
+        return isAvailableInSpecial;
+    }
+
+    // ⭐⭐ NUOVA LOGICA: Cerca la rule SPECIFICA per questa data
+    if (allRules) {
+        const ruleForThisDate = allRules.find(rule => {
+            const startDate = rule.start_date ? Utils.normalizeDate(new Date(rule.start_date)) : null;
+            const endDate = rule.end_date ? Utils.normalizeDate(new Date(rule.end_date)) : null;
+            const checkDate = Utils.normalizeDate(date);
+
+            if (startDate && endDate) {
+                return checkDate >= startDate && checkDate <= endDate;
+            } else if (startDate) {
+                return checkDate >= startDate;
+            } else if (endDate) {
+                return checkDate <= endDate;
+            }
+            return true;
+        });
+
+        console.log(`🎯 Rule trovata per ${Utils.formatDateDDMMYYYY(date)}:`, ruleForThisDate?.id || "Nessuna");
+
+        // ⭐⭐ SE la rule è VUOTA, disabilita IMMEDIATAMENTE
+        if (ruleForThisDate && CalendarManager.isRuleEmpty(ruleForThisDate)) {
+            console.log(`🚨🚨🚨 ${Utils.formatDateDDMMYYYY(date)} - Rule ${ruleForThisDate.id} VUOTA - giorno DISABILITATO`);
             return false;
         }
 
-        // ⭐⭐ AGGIUNGI DEBUG DETTAGLIATO
-        console.log(`🔍🔍🔍 DEBUG COMPLETO per ${Utils.formatDateDDMMYYYY(date)}`);
-        console.log(`📅 Data: ${date}, Day: ${dayOfWeekStr}`);
-        console.log(`📦 AllRules disponibili:`, allRules?.map(r => ({ id: r.id, start: r.start_date, end: r.end_date, empty: CalendarManager.isRuleEmpty(r) })));
-
-        // ⭐⭐ NUOVA LOGICA: Cerca la rule SPECIFICA per questa data
-        if (allRules) {
-            const ruleForThisDate = allRules.find(rule => {
-                const startDate = rule.start_date ? Utils.normalizeDate(new Date(rule.start_date)) : null;
-                const endDate = rule.end_date ? Utils.normalizeDate(new Date(rule.end_date)) : null;
-                const checkDate = Utils.normalizeDate(date);
-
-                if (startDate && endDate) {
-                    return checkDate >= startDate && checkDate <= endDate;
-                } else if (startDate) {
-                    return checkDate >= startDate;
-                } else if (endDate) {
-                    return checkDate <= endDate;
+        // ⭐⭐ SE c'è una rule con daily_schedules, usa quelli
+        if (ruleForThisDate && ruleForThisDate.daily_schedules && ruleForThisDate.daily_schedules.length > 0) {
+            try {
+                let schedules = ruleForThisDate.daily_schedules;
+                // ⭐⭐ CORREZIONE: Gestisci array di array
+                if (Array.isArray(schedules) && schedules.length > 0 && Array.isArray(schedules[0])) {
+                    schedules = schedules.flat();
                 }
-                return true;
-            });
 
-            console.log(`🎯 Rule trovata per ${Utils.formatDateDDMMYYYY(date)}:`, ruleForThisDate?.id || "Nessuna");
+                const ruleSpecialDays = schedules
+                    .map(item => {
+                        if (item && typeof item === 'object' && item.day) {
+                            return item.day;
+                        }
+                        return null;
+                    })
+                    .filter(day => day && CONFIG.DAY_NAMES.includes(day));
 
-            // ⭐⭐ SE la rule è VUOTA, disabilita IMMEDIATAMENTE
-            if (ruleForThisDate && CalendarManager.isRuleEmpty(ruleForThisDate)) {
-                console.log(`🚨🚨🚨 ${Utils.formatDateDDMMYYYY(date)} - Rule ${ruleForThisDate.id} VUOTA - giorno DISABILITATO`);
-                return false;
-            }
-
-            // ⭐⭐ SE c'è una rule con daily_schedules, usa quelli
-            if (ruleForThisDate && ruleForThisDate.daily_schedules && ruleForThisDate.daily_schedules.length > 0) {
-                try {
-                    let schedules = ruleForThisDate.daily_schedules;
-                    // ⭐⭐ CORREZIONE: Gestisci array di array
-                    if (Array.isArray(schedules) && schedules.length > 0 && Array.isArray(schedules[0])) {
-                        schedules = schedules.flat();
-                    }
-
-                    const ruleSpecialDays = schedules
-                        .map(item => {
-                            if (item && typeof item === 'object' && item.day) {
-                                return item.day;
-                            }
-                            return null;
-                        })
-                        .filter(day => day && CONFIG.DAY_NAMES.includes(day));
-
-                    console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} - Giorni rule ${ruleForThisDate.id}:`, ruleSpecialDays);
-
-                    if (ruleSpecialDays.length > 0) {
-                        const isAvailable = ruleSpecialDays.includes(dayOfWeekStr);
-                        console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} (${dayOfWeekStr}) - Disponibile nella rule ${ruleForThisDate.id}: ${isAvailable}`);
-                        return isAvailable;
-                    } else {
-                        console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} - Rule ${ruleForThisDate.id} ha daily_schedules ma nessun giorno valido`);
-                    }
-                } catch (error) {
-                    console.error("❌ Errore nel processing daily_schedules:", error);
+                console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} - Giorni rule ${ruleForThisDate.id}:`, ruleSpecialDays);
+                
+                if (ruleSpecialDays.length > 0) {
+                    const isAvailable = ruleSpecialDays.includes(dayOfWeekStr);
+                    console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} (${dayOfWeekStr}) - Disponibile nella rule ${ruleForThisDate.id}: ${isAvailable}`);
+                    return isAvailable;
+                } else {
+                    console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} - Rule ${ruleForThisDate.id} ha daily_schedules ma nessun giorno valido`);
                 }
-            } else if (ruleForThisDate) {
-                console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} - Rule ${ruleForThisDate.id} senza daily_schedules`);
+            } catch (error) {
+                console.error("❌ Errore nel processing daily_schedules:", error);
             }
+        } else if (ruleForThisDate) {
+            console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} - Rule ${ruleForThisDate.id} senza daily_schedules`);
         }
+    }
 
-        // ⭐⭐ FALLBACK: Se nessuna rule applicabile, usa i giorni default
-        const isAvailable = defaultDays.includes(dayOfWeekStr);
-        console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} (${dayOfWeekStr}) - Disponibile nei default: ${isAvailable}`);
+    // ⭐⭐ FALLBACK: Se nessuna rule applicabile, usa i giorni default
+    const isAvailable = defaultDays.includes(dayOfWeekStr);
+    console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} (${dayOfWeekStr}) - Disponibile nei default: ${isAvailable}`);
 
-        return isAvailable;
-    },
+    return isAvailable;
+},
 
     // ⭐ METODO HELPER: Trova rule per data
     findRuleForDate(date) {
