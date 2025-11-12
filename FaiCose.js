@@ -971,26 +971,58 @@ const HoursManager = {
         return hasConflict;
     },
 
-    getAvailableHours() {
-        const hours = [];
-        const availability = state.currentService._availability;
-        const dayOfWeekStr = CONFIG.DAY_NAMES[(state.selectedDate.getDay() + 6) % 7];
+getAvailableHours() {
+    const hours = [];
+    const availability = state.currentService._availability;
+    const dayOfWeekStr = CONFIG.DAY_NAMES[(state.selectedDate.getDay() + 6) % 7];
+    
+    // ⭐ INTERVALLO DINAMICO - QUESTA PARTE DEVE ESSERE CORRETTA
+    const serviceDurationHours = state.currentService.duration_minutes / 60;
+    console.log("🔍 Cerco orari per:", dayOfWeekStr, "Durata servizio:", serviceDurationHours + "h");
 
-        // ⭐ INTERVALLO DINAMICO basato sulla durata
-        const serviceDurationHours = state.currentService.duration_minutes / 60;
-
-        console.log("🔍 Cerco orari per:", dayOfWeekStr, "Durata servizio:", serviceDurationHours + "h");
-
-        // [codice esistente per trovare startHour e endHour...]
-
-        // ⭐ GENERA ORE CON INTERVALLO CORRETTO
-        for (let h = startHour; h < endHour; h += serviceDurationHours) {
-            hours.push(h);
+    // PRIMA cerca negli orari speciali
+    if (availability?.daily_schedules) {
+        console.log("🔍 Cerco orari speciali in daily_schedules");
+        try {
+            let schedules = availability.daily_schedules;
+            if (Array.isArray(schedules) && schedules.length > 0) {
+                if (Array.isArray(schedules[0])) {
+                    schedules = schedules.flat();
+                }
+                const scheduleForDay = schedules.find(s => s && s.day === dayOfWeekStr);
+                if (scheduleForDay) {
+                    console.log("✅ Trovato orario speciale:", scheduleForDay);
+                    let startHour = parseInt(scheduleForDay.start.split(':')[0]);
+                    let endHour = parseInt(scheduleForDay.end.split(':')[0]);
+                    
+                    // ⭐ CORREZIONE: Genera con intervallo corretto
+                    console.log(`🕒 Orari speciali: ${startHour}:00 - ${endHour}:00, intervallo: ${serviceDurationHours}h`);
+                    for (let h = startHour; h < endHour; h += serviceDurationHours) {
+                        hours.push(h);
+                    }
+                    console.log("📅 Ore generate da speciali:", hours);
+                    return hours;
+                }
+            }
+        } catch (error) {
+            console.error("❌ Errore nel parsing orari speciali:", error);
         }
+    }
 
-        console.log("📅 Ore generate (intervallo", serviceDurationHours + "h):", hours);
-        return hours;
-    },
+    // ALTRIMENTI usa orari default
+    console.log("🔍 Uso orari di default del servizio");
+    const startHour = parseInt(state.currentService.working_hours_start.split(':')[0]);
+    const endHour = parseInt(state.currentService.working_hours_end.split(':')[0]);
+
+    // ⭐ CORREZIONE: Genera con intervallo corretto
+    console.log(`🕒 Orari default: ${startHour}:00 - ${endHour}:00, intervallo: ${serviceDurationHours}h`);
+    for (let h = startHour; h < endHour; h += serviceDurationHours) {
+        hours.push(h);
+    }
+
+    console.log("📅 Ore generate da default:", hours);
+    return hours;
+},
 
     async loadSlots() {
         const cached = CacheManager.get(state.currentService.id, state.selectedDate);
