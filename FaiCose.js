@@ -896,146 +896,99 @@ const HoursManager = {
         return busyInfo;
     },
 
-async getAllArtisanSlotsForDate(artisanId, date) {
-    try {
-        const dateStr = Utils.formatDateISO(date);
-        console.log(`🎯 DEBUG: Chiamando endpoint artisan_bookings?artisan_id=${artisanId}&date=${dateStr}`);
-        
-        // 🔥 CORREGGI: Rimuovi /api/ dal path
-        const bookings = await API.request(`/artisan_bookings?artisan_id=${artisanId}&date=${dateStr}`);
-        console.log("✅ Risposta endpoint:", bookings);
-        
-        if (!bookings || !Array.isArray(bookings)) {
-            console.error("❌ Risposta non valida:", bookings);
+    async getAllArtisanSlotsForDate(artisanId, date) {
+        try {
+            const dateStr = Utils.formatDateISO(date);
+            console.log(`🎯 DEBUG: Chiamando endpoint artisan_bookings?artisan_id=${artisanId}&date=${dateStr}`);
+
+            // 🔥 CORREGGI: Rimuovi /api/ dal path
+            const bookings = await API.request(`/artisan_bookings?artisan_id=${artisanId}&date=${dateStr}`);
+            console.log("✅ Risposta endpoint:", bookings);
+
+            if (!bookings || !Array.isArray(bookings)) {
+                console.error("❌ Risposta non valida:", bookings);
+                return [];
+            }
+
+            console.log(`🎯 Prenotazioni trovate: ${bookings.length}`);
+
+            const artisanSlots = bookings.map(booking => ({
+                id: booking.slot_id,
+                start_time: booking.slot_start_time,
+                end_time: booking.slot_end_time,
+                service_id: booking.service_id,
+                _service: {
+                    id: booking.service_id,
+                    name: booking.service_name,
+                    artisan_id: artisanId
+                }
+            }));
+
+            console.log("📦 Slot elaborati:", artisanSlots);
+            return artisanSlots;
+
+        } catch (error) {
+            console.error("❌ Errore completo:", error);
             return [];
         }
+    },
 
-        console.log(`🎯 Prenotazioni trovate: ${bookings.length}`);
-        
-        const artisanSlots = bookings.map(booking => ({
-            id: booking.slot_id,
-            start_time: booking.slot_start_time,
-            end_time: booking.slot_end_time,
-            service_id: booking.service_id,
-            _service: {
-                id: booking.service_id,
-                name: booking.service_name,
-                artisan_id: artisanId
+    isArtisanBusyInHour(artisanSlots, hour) {
+        // ⭐ NUOVA VERSIONE - con controllo intervalli
+        const serviceDurationHours = state.currentService.duration_minutes / 60;
+        const currentSlotEndHour = hour + serviceDurationHours;
+
+        console.log(`🔍 Verifica ${artisanSlots.length} slot per ${hour}:00-${currentSlotEndHour}:00`);
+
+        // DEBUG: Mostra tutti gli slot
+        artisanSlots.forEach(slot => {
+            const startTimestamp = slot.start_time > 10000000000 ? slot.start_time : slot.start_time * 1000;
+            const endTimestamp = slot.end_time > 10000000000 ? slot.end_time : slot.end_time * 1000;
+            const slotStartHour = new Date(startTimestamp).getHours();
+            const slotEndHour = new Date(endTimestamp).getHours();
+            console.log(`⏰ Slot ${slot.id}: ${slotStartHour}:00-${slotEndHour}:00`);
+        });
+
+        const hasConflict = artisanSlots.some(slot => {
+            if (!slot.start_time || !slot.end_time) return false;
+
+            const startTimestamp = slot.start_time > 10000000000 ? slot.start_time : slot.start_time * 1000;
+            const endTimestamp = slot.end_time > 10000000000 ? slot.end_time : slot.end_time * 1000;
+            const slotStartHour = new Date(startTimestamp).getHours();
+            const slotEndHour = new Date(endTimestamp).getHours();
+
+            // ⭐ CONTROLLO INTERVALLI: [hour, currentSlotEndHour] vs [slotStartHour, slotEndHour]
+            const overlaps = (hour < slotEndHour && currentSlotEndHour > slotStartHour);
+
+            if (overlaps) {
+                console.log(`🚫 CONFLITTO: ${hour}:00-${currentSlotEndHour}:00 con slot ${slot.id} (${slotStartHour}:00-${slotEndHour}:00)`);
             }
-        }));
 
-        console.log("📦 Slot elaborati:", artisanSlots);
-        return artisanSlots;
+            return overlaps;
+        });
 
-    } catch (error) {
-        console.error("❌ Errore completo:", error);
-        return [];
-    }
-},
-
-isArtisanBusyInHour(artisanSlots, hour) {
-    const serviceDurationHours = state.currentService.duration_minutes / 60;
-    const currentSlotEndHour = hour + serviceDurationHours;
-    
-    console.log(`🔍 Verifica ${artisanSlots.length} slot per ${hour}:00-${currentSlotEndHour}:00`);
-
-    // DEBUG: Mostra tutti gli slot con le ore corrette
-    artisanSlots.forEach(slot => {
-        const startTimestamp = slot.start_time > 10000000000 ? slot.start_time : slot.start_time * 1000;
-        const endTimestamp = slot.end_time > 10000000000 ? slot.end_time : slot.end_time * 1000;
-        const slotStartHour = new Date(startTimestamp).getHours();
-        const slotEndHour = new Date(endTimestamp).getHours();
-        console.log(`⏰ Slot ${slot.id}: ${slotStartHour}:00-${slotEndHour}:00`);
-    });
-
-    const hasConflict = artisanSlots.some(slot => {
-        if (!slot.start_time) return false;
-
-        const startTimestamp = slot.start_time > 10000000000 ? slot.start_time : slot.start_time * 1000;
-        const endTimestamp = slot.end_time > 10000000000 ? slot.end_time : slot.end_time * 1000;
-        const slotStartHour = new Date(startTimestamp).getHours();
-        const slotEndHour = new Date(endTimestamp).getHours();
-
-        // ⭐ CORREZIONE: Controlla sovrapposizione di INTERVALLI
-        const overlaps = (hour < slotEndHour && currentSlotEndHour > slotStartHour);
-
-        if (overlaps) {
-            console.log(`🚫 CONFLITTO: ${hour}:00-${currentSlotEndHour}:00 con slot ${slot.id} (${slotStartHour}:00-${slotEndHour}:00)`);
-        }
-        
-        return overlaps;
-    });
-
-    console.log(`📋 Risultato finale ${hour}:00-${currentSlotEndHour}:00: ${hasConflict ? 'OCCUPATO' : 'libero'}`);
-    return hasConflict;
-},
+        console.log(`📋 Risultato finale ${hour}:00-${currentSlotEndHour}:00: ${hasConflict ? 'OCCUPATO' : 'libero'}`);
+        return hasConflict;
+    },
 
     getAvailableHours() {
         const hours = [];
         const availability = state.currentService._availability;
         const dayOfWeekStr = CONFIG.DAY_NAMES[(state.selectedDate.getDay() + 6) % 7];
-            const serviceDurationHours = state.currentService.duration_minutes / 60;
-    const interval = serviceDurationHours;
 
-    console.log("🔍 Cerco orari per:", dayOfWeekStr, "Durata servizio:", serviceDurationHours + "h");
+        // ⭐ INTERVALLO DINAMICO basato sulla durata
+        const serviceDurationHours = state.currentService.duration_minutes / 60;
 
-        // PRIMA cerca negli orari speciali della availability rule
-        if (availability?.daily_schedules) {
-            console.log("🔍 Cerco orari speciali in daily_schedules");
+        console.log("🔍 Cerco orari per:", dayOfWeekStr, "Durata servizio:", serviceDurationHours + "h");
 
-            try {
-                let schedules = availability.daily_schedules;
+        // [codice esistente per trovare startHour e endHour...]
 
-                // Gestione struttura complessa (array di array)
-                if (Array.isArray(schedules) && schedules.length > 0) {
-                    if (Array.isArray(schedules[0])) {
-                        schedules = schedules.flat();
-                    }
-
-                    const scheduleForDay = schedules.find(s => s && s.day === dayOfWeekStr);
-                    if (scheduleForDay) {
-                        console.log("✅ Trovato orario speciale:", scheduleForDay);
-
-                        // CORREZIONE: Gestione corretta degli orari
-                        let startHour = parseInt(scheduleForDay.start.split(':')[0]);
-                        let endHour = parseInt(scheduleForDay.end.split(':')[0]);
-
-                        console.log(`🕒 Orari originali: ${startHour}:00 - ${endHour}:00`);
-
-                        // CORREZIONE: Se end < start, probabilmente è un errore di inserimento
-                        if (endHour <= startHour) {
-                            console.warn("⚠️ Orari apparentemente invertiti, correggo:", `${startHour}:00 - ${endHour}:00`, "→", `${endHour}:00 - ${startHour}:00`);
-                            [startHour, endHour] = [endHour, startHour];
-                        }
-
-                        console.log(`🕒 Orari corretti: ${startHour}:00 - ${endHour}:00`);
-
-                        // Genera le ore disponibili
-                        const interval = state.currentService.duration_minutes / 60; // 120/60 = 2 ore
-for (let h = startHour; h < endHour; h += interval) {
-        hours.push(h);
-    }
-
-    console.log("📅 Ore generate (intervallo", interval + "h):", hours);
-    return hours;
-                    }
-                }
-            } catch (error) {
-                console.error("❌ Errore nel parsing orari speciali:", error);
-            }
-        }
-
-        // ALTRIMENTI usa gli orari di default del servizio
-        console.log("🔍 Uso orari di default del servizio");
-        const startHour = parseInt(state.currentService.working_hours_start.split(':')[0]);
-        const endHour = parseInt(state.currentService.working_hours_end.split(':')[0]);
-
-        console.log(`🕒 Orari default: ${startHour}:00 - ${endHour}:00`);
-
-        for (let h = startHour; h < endHour; h++) {
+        // ⭐ GENERA ORE CON INTERVALLO CORRETTO
+        for (let h = startHour; h < endHour; h += serviceDurationHours) {
             hours.push(h);
         }
 
+        console.log("📅 Ore generate (intervallo", serviceDurationHours + "h):", hours);
         return hours;
     },
 
@@ -1053,9 +1006,9 @@ for (let h = startHour; h < endHour; h += interval) {
     createHourButton(hour, slots, isArtisanBusy = false) {
         const btn = document.createElement('button');
         const serviceDurationHours = state.currentService.duration_minutes / 60;
-    const endHour = hour + serviceDurationHours;
-    btn.classList.add('button-3', 'w-button');
-    btn.setAttribute('type', 'button');
+        const endHour = hour + serviceDurationHours;
+        btn.classList.add('button-3', 'w-button');
+        btn.setAttribute('type', 'button');
 
         const slot = this.findSlotForHour(slots, hour);
         const availableSpots = slot ? (slot.capacity - slot.booked_count) : state.currentService.max_capacity_per_slot;
@@ -1078,7 +1031,7 @@ for (let h = startHour; h < endHour; h += interval) {
             statusTitle = '';
         }
 
- btn.innerHTML = `
+        btn.innerHTML = `
         <div style="font-size: 16px; font-weight: bold;">
             ${hour}:00 - ${endHour}:00
         </div>
