@@ -1075,7 +1075,6 @@ createDayElement(day, dayOfWeekStr, date, isSelectable) {
     // ⭐⭐ Aggiungi anche stile per giorni selezionati
     if (state.selectedDate && date.getTime() === state.selectedDate.getTime()) {
         dateDiv.classList.add('selected');
-        dateDiv.style.color = 'white';
     }
 
     return dateDiv;
