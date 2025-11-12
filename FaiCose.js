@@ -280,89 +280,123 @@ const API = {
         return service;
     },
 
-    async getServiceBySlug(slug) {
-        const cacheKey = `service_${slug}`;
-        const cached = sessionStorage.getItem(cacheKey);
-        if (cached) {
-            const data = JSON.parse(cached);
-            if (Date.now() - data._cached < 3600000) {
-                console.log('✅ Servizio dalla cache');
-                return data.service;
-            }
+async getServiceBySlug(slug) {
+    const cacheKey = `service_${slug}`;
+    const cached = sessionStorage.getItem(cacheKey);
+    if (cached) {
+        const data = JSON.parse(cached);
+        if (Date.now() - data._cached < 3600000) {
+            console.log('✅ Servizio dalla cache');
+            return data.service;
         }
+    }
 
-        const service = await this.request(`/services/slug/${slug}`);
+    const service = await this.request(`/services/slug/${slug}`);
 
-        if (service.artisan_id) {
-            try {
-                const artisan = await this.request(`/artisan/${service.artisan_id}`);
-                service._artisan = artisan;
+    if (service.artisan_id) {
+        try {
+            const artisan = await this.request(`/artisan/${service.artisan_id}`);
+            service._artisan = artisan;
 
-                console.log("👨‍🔧 Artigiano caricato:", artisan);
-                console.log("📋 TUTTE le availability rules dell'artigiano:");
-                artisan._artisan_availability_rules_of_artisan.forEach((rule, index) => {
-                    console.log(`=== REGOLA ${index + 1} (ID: ${rule.id}) ===`);
-                    console.log("Start Date:", rule.start_date);
-                    console.log("End Date:", rule.end_date);
-                    console.log("Daily Schedules:", rule.daily_schedules);
-                    console.log("Lunghezza Daily Schedules:", rule.daily_schedules?.length);
-                    console.log("=== FINE REGOLA ===");
-                });
-                console.log("📅 Regole disponibilità RAW:", artisan._artisan_availability_rules_of_artisan);
-
-                if (artisan._artisan_availability_rules_of_artisan?.length > 0) {
-                    // DEBUG DETTAGLIATO
-                    artisan._artisan_availability_rules_of_artisan.forEach((rule, index) => {
-                        console.log(`=== REGOLA ${index + 1} ===`);
-                        console.log("ID:", rule.id);
-                        console.log("Start Date:", rule.start_date);
-                        console.log("End Date:", rule.end_date);
-                        console.log("Daily Schedules:", rule.daily_schedules);
-                        console.log("Tipo Daily Schedules:", typeof rule.daily_schedules);
-                        console.log("=== FINE REGOLA ===");
-                    });
-
-                    const today = new Date();
-                    today.setHours(0, 0, 0, 0);
-
-                    const activeRule = artisan._artisan_availability_rules_of_artisan.find(rule => {
-                        const startDate = rule.start_date ? new Date(rule.start_date) : null;
-                        const endDate = rule.end_date ? new Date(rule.end_date) : null;
-
-                        if (startDate && endDate) {
-                            return today >= startDate && today <= endDate;
-                        } else if (startDate) {
-                            return today >= startDate;
-                        } else if (endDate) {
-                            return today <= endDate;
-                        }
-                        return true;
-                    });
-
-                    if (activeRule) {
-                        console.log("✅ Regola attiva trovata:", activeRule);
-                        service._availability = activeRule;
-                    } else {
-                        console.log("⚠️ Nessuna regola attiva trovata, uso la prima");
-                        service._availability = artisan._artisan_availability_rules_of_artisan[0];
-                    }
-                } else {
-                    console.log("❌ Nessuna regola di disponibilità per l'artigiano");
-                    service._availability = null;
+            console.log("👨‍🔧 Artigiano caricato:", artisan);
+            
+            // ⭐⭐ DEBUG COMPLETO: Mostra TUTTE le availability rules
+            console.log("📋 TUTTE le availability rules dell'artigiano:");
+            artisan._artisan_availability_rules_of_artisan.forEach((rule, index) => {
+                console.log(`=== REGOLA ${index + 1} (ID: ${rule.id}) ===`);
+                console.log("Start Date:", rule.start_date);
+                console.log("End Date:", rule.end_date);
+                console.log("Daily Schedules:", rule.daily_schedules);
+                console.log("Lunghezza Daily Schedules:", rule.daily_schedules?.length);
+                console.log("Tipo Daily Schedules:", typeof rule.daily_schedules);
+                
+                // Controllo specifico per array vuoti
+                if (rule.daily_schedules && rule.daily_schedules.length === 0) {
+                    console.log("🚨 QUESTA REGOLA HA DAILY_SCHEDULES VUOTO!");
                 }
-            } catch (error) {
-                console.error("❌ Errore nel caricamento artigiano:", error);
+                if (Array.isArray(rule.daily_schedules) && rule.daily_schedules.length === 1 && 
+                    Array.isArray(rule.daily_schedules[0]) && rule.daily_schedules[0].length === 0) {
+                    console.log("🚨 QUESTA REGOLA HA DAILY_SCHEDULES [[]] (array di array vuoto)!");
+                }
+                console.log("=== FINE REGOLA ===");
+            });
+
+            // ⭐⭐ TEST: Quale rule per quale data?
+            const findRuleForDate = (targetDate) => {
+                return artisan._artisan_availability_rules_of_artisan.find(rule => {
+                    const startDate = rule.start_date ? new Date(rule.start_date) : null;
+                    const endDate = rule.end_date ? new Date(rule.end_date) : null;
+
+                    if (startDate && endDate) {
+                        return targetDate >= startDate && targetDate <= endDate;
+                    } else if (startDate) {
+                        return targetDate >= startDate;
+                    } else if (endDate) {
+                        return targetDate <= endDate;
+                    }
+                    return true;
+                });
+            };
+
+            const testDates = [
+                new Date('2025-11-12'), // Oggi
+                new Date('2025-12-01'), // Inizio ID 2
+                new Date('2025-12-15'), // Fine ID 2  
+                new Date('2025-12-17'), // Inizio ID 3
+                new Date('2025-12-25'), // Durante ID 3
+                new Date('2026-01-15')  // Durante ID 3
+            ];
+
+            console.log("🔍 TEST: Quale rule per quale data?");
+            testDates.forEach(testDate => {
+                const rule = findRuleForDate(testDate);
+                console.log(`📅 ${Utils.formatDateDDMMYYYY(testDate)} → Rule ID: ${rule?.id || 'Nessuna'}`);
+            });
+
+            // ⭐ LOGICA ORIGINALE: scegli la rule per la data di OGGI
+            if (artisan._artisan_availability_rules_of_artisan?.length > 0) {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+
+                const activeRule = artisan._artisan_availability_rules_of_artisan.find(rule => {
+                    const startDate = rule.start_date ? new Date(rule.start_date) : null;
+                    const endDate = rule.end_date ? new Date(rule.end_date) : null;
+
+                    if (startDate && endDate) {
+                        return today >= startDate && today <= endDate;
+                    } else if (startDate) {
+                        return today >= startDate;
+                    } else if (endDate) {
+                        return today <= endDate;
+                    }
+                    return true;
+                });
+
+                if (activeRule) {
+                    console.log("✅ Regola attiva trovata per OGGI:", activeRule);
+                    service._availability = activeRule;
+                } else {
+                    console.log("⚠️ Nessuna regola attiva trovata per oggi, uso la prima");
+                    service._availability = artisan._artisan_availability_rules_of_artisan[0];
+                }
+            } else {
+                console.log("❌ Nessuna regola di disponibilità per l'artigiano");
                 service._availability = null;
             }
+
+        } catch (error) {
+            console.error("❌ Errore nel caricamento artigiano:", error);
+            service._availability = null;
         }
+    }
 
-        sessionStorage.setItem(cacheKey, JSON.stringify({
-            service,
-            _cached: Date.now()
-        }));
+    sessionStorage.setItem(cacheKey, JSON.stringify({
+        service,
+        _cached: Date.now()
+    }));
 
-        return service;
-    },
+    return service;
+}
 
 
     async getSlots(serviceId, date) {
