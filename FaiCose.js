@@ -1133,48 +1133,6 @@ isArtisanBusyInHour(artisanSlots, hour) {
         PricingManager.update();
     },
 
-    isArtisanBusyInHour(allBookings, hour) {
-        console.log(`🔍 Verifica occupazione artigiano alle ${hour}:00`);
-
-        // Cerca QUALSIASI prenotazione dell'artigiano in quest'ora
-        const hasAnyBooking = allBookings.some(booking => {
-            if (!booking) return false;
-
-            // ESTRAI l'ora dalla prenotazione
-            let bookingHour;
-
-            if (booking.time) {
-                // Timestamp in millisecondi
-                bookingHour = new Date(booking.time).getHours();
-            } else if (booking.selected_hour) {
-                // Timestamp in secondi o millisecondi
-                const timestamp = typeof booking.selected_hour === 'number' ?
-                    (booking.selected_hour > 10000000000 ? booking.selected_hour : booking.selected_hour * 1000) :
-                    new Date(booking.selected_hour).getTime();
-                bookingHour = new Date(timestamp).getHours();
-            } else if (booking.start_time) {
-                // Timestamp in secondi
-                bookingHour = new Date(booking.start_time * 1000).getHours();
-            } else {
-                return false;
-            }
-
-            const hourMatches = bookingHour === hour;
-
-            if (hourMatches) {
-                console.log(`🎯 Trovato conflitto:`, {
-                    service: booking.service_id,
-                    hour: bookingHour,
-                    booking: booking
-                });
-            }
-
-            return hourMatches;
-        });
-
-        return hasAnyBooking;
-    },
-
     async getAllArtisanBookingsForDate(artisanId, date) {
         const cached = CacheManager.getArtisanBookings(artisanId, date);
         if (cached) return cached;
