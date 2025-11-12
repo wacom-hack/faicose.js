@@ -922,17 +922,17 @@ isDaySelectable(date, today, dayOfWeekStr, defaultDays, specialDays, availStart,
         return false;
     }
 
-    console.log(`🔍🔍🔍 DEBUG COMPLETO per ${Utils.formatDateDDMMYYYY(date)}`);
-    console.log(`📅 Data: ${date}, Day: ${dayOfWeekStr}`);
-    console.log(`📊 DefaultDays: ${defaultDays}, SpecialDays: ${specialDays}`);
-    console.log("📦 AllRules disponibili:", allRules?.map(r => ({id: r.id, start: r.start_date, end: r.end_date, empty: CalendarManager.isRuleEmpty(r)})));
-
-    // ⭐⭐ CONTROLLO PRIORITARIO: Se abbiamo specialDays, usali invece dei defaultDays
-    if (specialDays && specialDays.length > 0) {
-        console.log(`🎯 Usa specialDays per ${Utils.formatDateDDMMYYYY(date)}:`, specialDays);
-        const isAvailableInSpecial = specialDays.includes(dayOfWeekStr);
-        console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} (${dayOfWeekStr}) - Disponibile in specialDays: ${isAvailableInSpecial}`);
-        return isAvailableInSpecial;
+    // ⭐⭐ CONTROLLO GIORNI PREAVVISO
+    const minNoticeDays = state.currentService?.min_notice_days || 0;
+    if (minNoticeDays > 0) {
+        const minBookingDate = new Date();
+        minBookingDate.setDate(minBookingDate.getDate() + minNoticeDays);
+        minBookingDate.setHours(0, 0, 0, 0);
+        
+        if (date < minBookingDate) {
+            console.log(`⏰ ${Utils.formatDateDDMMYYYY(date)} - Non rispetta preavviso di ${minNoticeDays} giorni`);
+            return false;
+        }
     }
 
     // ⭐⭐ NUOVA LOGICA: Cerca la rule SPECIFICA per questa data
