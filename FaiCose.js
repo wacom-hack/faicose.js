@@ -933,30 +933,36 @@ async getAllArtisanSlotsForDate(artisanId, date) {
     }
 },
 
-    isArtisanBusyInHour(artisanSlots, hour) {
-        console.log(`🔍 Verifica ${artisanSlots.length} slot per le ${hour}:00`);
+isArtisanBusyInHour(artisanSlots, hour) {
+    console.log(`🔍 Verifica ${artisanSlots.length} slot per le ${hour}:00`);
+    console.log("📊 Slot da analizzare:", artisanSlots);
 
-        if (!artisanSlots || artisanSlots.length === 0) {
-            console.log(`✅ Artigiano LIBERO alle ${hour}:00 - nessuno slot occupato`);
+    if (!artisanSlots || artisanSlots.length === 0) {
+        console.log(`✅ Artigiano LIBERO alle ${hour}:00 - nessuno slot occupato`);
+        return false;
+    }
+
+    const hasConflict = artisanSlots.some(slot => {
+        if (!slot.start_time) {
+            console.log(`⚠️ Slot ${slot.id} senza start_time`);
             return false;
         }
 
-        const hasConflict = artisanSlots.some(slot => {
-            if (!slot.start_time) return false;
+        const slotHour = new Date(slot.start_time * 1000).getHours();
+        console.log(`⏰ Slot ${slot.id}: start_time=${slot.start_time} → ${slotHour}:00`);
+        
+        const matches = slotHour === hour;
 
-            const slotHour = new Date(slot.start_time * 1000).getHours();
-            const matches = slotHour === hour;
+        if (matches) {
+            console.log(`🚫 CONFLITTO ALLE ${hour}:00 - Slot ${slot.id} del servizio "${slot._service?.name}"`);
+        }
 
-            if (matches) {
-                console.log(`🚫 CONFLITTO ALLE ${hour}:00 - Slot ${slot.id} del servizio "${slot._service?.name}"`);
-            }
+        return matches;
+    });
 
-            return matches;
-        });
-
-        console.log(`📋 Risultato ${hour}:00: ${hasConflict ? 'OCCUPATO' : 'libero'}`);
-        return hasConflict;
-    },
+    console.log(`📋 Risultato ${hour}:00: ${hasConflict ? 'OCCUPATO' : 'libero'}`);
+    return hasConflict;
+},
 
     getAvailableHours() {
         const hours = [];
