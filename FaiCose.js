@@ -1049,27 +1049,34 @@ isDaySelectable(date, today, dayOfWeekStr, defaultDays, specialDays, availStart,
         // Caso 3: Array con dati validi
         return false;
     },
+createDayElement(day, dayOfWeekStr, date, isSelectable) {
+    const dateDiv = document.createElement('div');
+    dateDiv.classList.add('div-block-6');
+    dateDiv.innerHTML = `
+        <div class="text-block-10"><strong>${day}</strong></div>
+        <div class="text-block-10">${dayOfWeekStr}</div>
+    `;
 
-    createDayElement(day, dayOfWeekStr, date, isSelectable) {
-        const dateDiv = document.createElement('div');
-        dateDiv.classList.add('div-block-6');
-        dateDiv.innerHTML = `
-            <div class="text-block-10"><strong>${day}</strong></div>
-            <div class="text-block-10">${dayOfWeekStr}</div>
-        `;
+    // ⭐⭐ CORREZIONE: Aggiungi classe 'disabled' visivamente per giorni non selezionabili
+    if (!isSelectable) {
+        dateDiv.classList.add('disabled');
+        dateDiv.style.opacity = '0.5';
+        dateDiv.style.pointerEvents = 'none';
+        dateDiv.style.cursor = 'not-allowed';
+    } else {
+        dateDiv.addEventListener('click', () => this.selectDate(date));
+        dateDiv.style.cursor = 'pointer';
+    }
 
-        if (!isSelectable) {
-            dateDiv.classList.add('disabled');
-        } else {
-            dateDiv.addEventListener('click', () => this.selectDate(date));
-        }
+    // ⭐⭐ Aggiungi anche stile per giorni selezionati
+    if (state.selectedDate && date.getTime() === state.selectedDate.getTime()) {
+        dateDiv.classList.add('selected');
+        dateDiv.style.backgroundColor = '#007bff';
+        dateDiv.style.color = 'white';
+    }
 
-        if (state.selectedDate && date.getTime() === state.selectedDate.getTime()) {
-            dateDiv.classList.add('selected');
-        }
-
-        return dateDiv;
-    },
+    return dateDiv;
+},
 
     changeMonth(delta) {
         CacheManager.clear();
