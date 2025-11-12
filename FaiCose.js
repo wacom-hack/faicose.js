@@ -396,7 +396,7 @@ async getServiceBySlug(slug) {
     }));
 
     return service;
-}
+},
 
 
     async getSlots(serviceId, date) {
