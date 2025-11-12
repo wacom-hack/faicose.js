@@ -353,40 +353,24 @@ async getServiceBySlug(slug) {
                 console.log(`📅 ${Utils.formatDateDDMMYYYY(testDate)} → Rule ID: ${rule?.id || 'Nessuna'}`);
             });
 
-            // ⭐ LOGICA ORIGINALE: scegli la rule per la data di OGGI
+            // ⭐⭐ NUOVA LOGICA: Non scegliere una rule fissa, ma salva tutte le rules
             if (artisan._artisan_availability_rules_of_artisan?.length > 0) {
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-
-                const activeRule = artisan._artisan_availability_rules_of_artisan.find(rule => {
-                    const startDate = rule.start_date ? new Date(rule.start_date) : null;
-                    const endDate = rule.end_date ? new Date(rule.end_date) : null;
-
-                    if (startDate && endDate) {
-                        return today >= startDate && today <= endDate;
-                    } else if (startDate) {
-                        return today >= startDate;
-                    } else if (endDate) {
-                        return today <= endDate;
-                    }
-                    return true;
-                });
-
-                if (activeRule) {
-                    console.log("✅ Regola attiva trovata per OGGI:", activeRule);
-                    service._availability = activeRule;
-                } else {
-                    console.log("⚠️ Nessuna regola attiva trovata per oggi, uso la prima");
-                    service._availability = artisan._artisan_availability_rules_of_artisan[0];
-                }
+                console.log("✅ Rules disponibili, verranno scelte dinamicamente per data");
+                service._availability = null; // Non settare una rule fissa!
+                
+                // Salva TUTTE le rules nel service per usarle dopo dinamicamente
+                service._all_availability_rules = artisan._artisan_availability_rules_of_artisan;
+                console.log("📦 Tutte le rules salvate per selezione dinamica:", service._all_availability_rules.map(r => r.id));
             } else {
                 console.log("❌ Nessuna regola di disponibilità per l'artigiano");
                 service._availability = null;
+                service._all_availability_rules = [];
             }
 
         } catch (error) {
             console.error("❌ Errore nel caricamento artigiano:", error);
             service._availability = null;
+            service._all_availability_rules = [];
         }
     }
 
@@ -717,61 +701,75 @@ const CalendarManager = {
         }
     },
 
-    getAvailabilityRules() {
-        const availability = state.currentService._availability;
+getAvailabilityRules() {
+    // ⭐⭐ NUOVA LOGICA: Trova la rule corretta per la DATA CORRENTE del calendario
+    const currentCalendarDate = state.currentDate; // Data mostrata nel calendario
+    const allRules = state.currentService._all_availability_rules;
+    
+    console.log(`🔍 Cerco rule per data calendario: ${Utils.formatDateDDMMYYYY(currentCalendarDate)}`);
+    
+    if (!allRules || allRules.length === 0) {
+        console.log("❌ Nessuna regola disponibile");
+        return {
+            defaultDays: state.currentService.working_days || [],
+            specialDays: [],
+            availStart: null,
+            availEnd: null
+        };
+    }
 
-        if (!availability) {
-            console.log("❌ Nessuna disponibilità trovata per l'artigiano");
-            return {
-                defaultDays: state.currentService.working_days || [],
-                specialDays: [],
-                availStart: null,
-                availEnd: null
-            };
+    // Trova la rule per la data del calendario
+    const ruleForCalendarDate = allRules.find(rule => {
+        const startDate = rule.start_date ? new Date(rule.start_date) : null;
+        const endDate = rule.end_date ? new Date(rule.end_date) : null;
+
+        if (startDate && endDate) {
+            return currentCalendarDate >= startDate && currentCalendarDate <= endDate;
+        } else if (startDate) {
+            return currentCalendarDate >= startDate;
+        } else if (endDate) {
+            return currentCalendarDate <= endDate;
         }
+        return true;
+    });
 
-        console.log("✅ Disponibilità artigiano:", availability);
+    console.log(`📅 Rule trovata per ${Utils.formatDateDDMMYYYY(currentCalendarDate)}:`, 
+                ruleForCalendarDate ? `ID ${ruleForCalendarDate.id}` : "Nessuna");
 
-        // ⭐ NUOVO: Log per daily_schedules vuoti
-        if (availability.daily_schedules) {
-            console.log("📋 Daily schedules:", availability.daily_schedules);
-            console.log("📋 Tipo daily_schedules:", typeof availability.daily_schedules);
-            console.log("📋 Lunghezza daily_schedules:", availability.daily_schedules.length);
+    // Se non trova rule per questa data, usa la prima come fallback
+    const activeRule = ruleForCalendarDate || allRules[0];
+    
+    if (activeRule) {
+        console.log("✅ Rule attiva:", activeRule.id);
+        // Imposta la rule attiva per il service (temporaneamente per questa data)
+        state.currentService._availability = activeRule;
+    }
 
-            if (availability.daily_schedules.length === 0) {
-                console.log("🚨 ATTENZIONE: daily_schedules è VUOTO - nessun giorno disponibile nel periodo");
-            } else if (Array.isArray(availability.daily_schedules[0]) && availability.daily_schedules[0].length === 0) {
-                console.log("🚨 ATTENZIONE: daily_schedules è [[]] - array di array vuoto");
-            }
-        }
+    // [RESTA IL CODICE ESISTENTE per processare la rule...]
+    const defaultDays = state.currentService.working_days || [];
+    let specialDays = [];
+    let availStart = null;
+    let availEnd = null;
 
-        // ⭐⭐ AGGIUNGI: DICHIARAZIONE VARIABILI
-        const defaultDays = state.currentService.working_days || [];
-        let specialDays = [];
-        let availStart = null;
-        let availEnd = null;
-
-        if (availability.start_date) {
-            availStart = new Date(availability.start_date);
+    if (activeRule) {
+        if (activeRule.start_date) {
+            availStart = new Date(activeRule.start_date);
             availStart.setHours(0, 0, 0, 0);
         }
 
-        if (availability.end_date) {
-            availEnd = new Date(availability.end_date);
+        if (activeRule.end_date) {
+            availEnd = new Date(activeRule.end_date);
             availEnd.setHours(23, 59, 59, 999);
         }
 
-        // CORREZIONE: Gestione daily_schedules semplificata
-        if (availability.daily_schedules && availability.daily_schedules.length > 0) {
+        // Processa daily_schedules
+        if (activeRule.daily_schedules && activeRule.daily_schedules.length > 0) {
             try {
-                let schedules = availability.daily_schedules;
-
-                // Appiattisci la struttura (array di array)
+                let schedules = activeRule.daily_schedules;
                 if (Array.isArray(schedules) && schedules.length > 0 && Array.isArray(schedules[0])) {
                     schedules = schedules.flat();
                 }
 
-                // Estrai i giorni disponibili
                 specialDays = schedules
                     .map(item => {
                         if (item && typeof item === 'object' && item.day) {
@@ -783,20 +781,19 @@ const CalendarManager = {
                     .filter(day => day && CONFIG.DAY_NAMES.includes(day));
 
                 console.log("📅 Giorni disponibili speciali:", specialDays);
-
             } catch (error) {
                 console.error("❌ Errore nel processing daily_schedules:", error);
             }
         }
+    }
 
-        return {
-            defaultDays,
-            specialDays,
-            availStart,
-            availEnd
-        };
-    },
-
+    return {
+        defaultDays,
+        specialDays,
+        availStart,
+        availEnd
+    };
+},
 
     isDaySelectable(date, today, dayOfWeekStr, defaultDays, specialDays, availStart, availEnd) {
         // 1. Controlla se la data è nel passato
