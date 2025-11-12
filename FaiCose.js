@@ -922,7 +922,7 @@ isDaySelectable(date, today, dayOfWeekStr, defaultDays, specialDays, availStart,
         return false;
     }
 
-    // ⭐⭐ CONTROLLO GIORNI PREAVVISO
+    // ⭐⭐ CONTROLLO PRIORITARIO: Giorni di preavviso
     const minNoticeDays = state.currentService?.min_notice_days || 0;
     if (minNoticeDays > 0) {
         const minBookingDate = new Date();
@@ -935,36 +935,41 @@ isDaySelectable(date, today, dayOfWeekStr, defaultDays, specialDays, availStart,
         }
     }
 
-    // ⭐⭐ NUOVA LOGICA: Cerca la rule SPECIFICA per questa data
-    if (allRules) {
-        const ruleForThisDate = allRules.find(rule => {
-            const startDate = rule.start_date ? Utils.normalizeDate(new Date(rule.start_date)) : null;
-            const endDate = rule.end_date ? Utils.normalizeDate(new Date(rule.end_date)) : null;
-            const checkDate = Utils.normalizeDate(date);
+    console.log(`🔍🔍🔍 DEBUG COMPLETO per ${Utils.formatDateDDMMYYYY(date)}`);
+    console.log(`📅 Data: ${date}, Day: ${dayOfWeekStr}`);
+    console.log(`📊 DefaultDays: ${defaultDays}, SpecialDays: ${specialDays}`);
+    console.log("📦 AllRules disponibili:", allRules?.map(r => ({id: r.id, start: r.start_date, end: r.end_date, empty: CalendarManager.isRuleEmpty(r)})));
 
-            if (startDate && endDate) {
-                return checkDate >= startDate && checkDate <= endDate;
-            } else if (startDate) {
-                return checkDate >= startDate;
-            } else if (endDate) {
-                return checkDate <= endDate;
-            }
-            return true;
-        });
+    // ⭐⭐ CERCA rule per questa data (se esiste)
+    const ruleForThisDate = allRules?.find(rule => {
+        const startDate = rule.start_date ? Utils.normalizeDate(new Date(rule.start_date)) : null;
+        const endDate = rule.end_date ? Utils.normalizeDate(new Date(rule.end_date)) : null;
+        const checkDate = Utils.normalizeDate(date);
 
-        console.log(`🎯 Rule trovata per ${Utils.formatDateDDMMYYYY(date)}:`, ruleForThisDate?.id || "Nessuna");
+        if (startDate && endDate) {
+            return checkDate >= startDate && checkDate <= endDate;
+        } else if (startDate) {
+            return checkDate >= startDate;
+        } else if (endDate) {
+            return checkDate <= endDate;
+        }
+        return true;
+    });
 
-        // ⭐⭐ SE la rule è VUOTA, disabilita IMMEDIATAMENTE
-        if (ruleForThisDate && CalendarManager.isRuleEmpty(ruleForThisDate)) {
+    console.log(`🎯 Rule trovata per ${Utils.formatDateDDMMYYYY(date)}:`, ruleForThisDate?.id || "Nessuna");
+
+    // ⭐⭐ SE C'È UNA RULE PER QUESTA DATA, applica le sue regole
+    if (ruleForThisDate) {
+        // ⭐⭐ SE la rule è VUOTA, disabilita
+        if (CalendarManager.isRuleEmpty(ruleForThisDate)) {
             console.log(`🚨🚨🚨 ${Utils.formatDateDDMMYYYY(date)} - Rule ${ruleForThisDate.id} VUOTA - giorno DISABILITATO`);
             return false;
         }
 
-        // ⭐⭐ SE c'è una rule con daily_schedules, usa quelli
-        if (ruleForThisDate && ruleForThisDate.daily_schedules && ruleForThisDate.daily_schedules.length > 0) {
+        // ⭐⭐ SE la rule ha daily_schedules, usa quelli
+        if (ruleForThisDate.daily_schedules && ruleForThisDate.daily_schedules.length > 0) {
             try {
                 let schedules = ruleForThisDate.daily_schedules;
-                // ⭐⭐ CORREZIONE: Gestisci array di array
                 if (Array.isArray(schedules) && schedules.length > 0 && Array.isArray(schedules[0])) {
                     schedules = schedules.flat();
                 }
@@ -986,18 +991,23 @@ isDaySelectable(date, today, dayOfWeekStr, defaultDays, specialDays, availStart,
                     return isAvailable;
                 } else {
                     console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} - Rule ${ruleForThisDate.id} ha daily_schedules ma nessun giorno valido`);
+                    return false;
                 }
             } catch (error) {
                 console.error("❌ Errore nel processing daily_schedules:", error);
+                return false;
             }
-        } else if (ruleForThisDate) {
-            console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} - Rule ${ruleForThisDate.id} senza daily_schedules`);
         }
+        
+        // ⭐⭐ SE la rule esiste ma non ha daily_schedules, usa i default
+        const isAvailable = defaultDays.includes(dayOfWeekStr);
+        console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} (${dayOfWeekStr}) - Rule ${ruleForThisDate.id} senza schedules, usa default: ${isAvailable}`);
+        return isAvailable;
     }
 
-    // ⭐⭐ FALLBACK: Se nessuna rule applicabile, usa i giorni default
+    // ⭐⭐ SE NON C'È NESSUNA RULE: usa i giorni default (selezionabile)
     const isAvailable = defaultDays.includes(dayOfWeekStr);
-    console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} (${dayOfWeekStr}) - Disponibile nei default: ${isAvailable}`);
+    console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} (${dayOfWeekStr}) - Nessuna rule, usa default: ${isAvailable}`);
 
     return isAvailable;
 },
