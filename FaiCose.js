@@ -299,6 +299,15 @@ const API = {
                 service._artisan = artisan;
 
                 console.log("👨‍🔧 Artigiano caricato:", artisan);
+                console.log("📋 TUTTE le availability rules dell'artigiano:");
+                artisan._artisan_availability_rules_of_artisan.forEach((rule, index) => {
+                    console.log(`=== REGOLA ${index + 1} (ID: ${rule.id}) ===`);
+                    console.log("Start Date:", rule.start_date);
+                    console.log("End Date:", rule.end_date);
+                    console.log("Daily Schedules:", rule.daily_schedules);
+                    console.log("Lunghezza Daily Schedules:", rule.daily_schedules?.length);
+                    console.log("=== FINE REGOLA ===");
+                });
                 console.log("📅 Regole disponibilità RAW:", artisan._artisan_availability_rules_of_artisan);
 
                 if (artisan._artisan_availability_rules_of_artisan?.length > 0) {
@@ -674,154 +683,154 @@ const CalendarManager = {
         }
     },
 
-getAvailabilityRules() {
-    const availability = state.currentService._availability;
+    getAvailabilityRules() {
+        const availability = state.currentService._availability;
 
-    if (!availability) {
-        console.log("❌ Nessuna disponibilità trovata per l'artigiano");
+        if (!availability) {
+            console.log("❌ Nessuna disponibilità trovata per l'artigiano");
+            return {
+                defaultDays: state.currentService.working_days || [],
+                specialDays: [],
+                availStart: null,
+                availEnd: null
+            };
+        }
+
+        console.log("✅ Disponibilità artigiano:", availability);
+
+        // ⭐ NUOVO: Log per daily_schedules vuoti
+        if (availability.daily_schedules) {
+            console.log("📋 Daily schedules:", availability.daily_schedules);
+            console.log("📋 Tipo daily_schedules:", typeof availability.daily_schedules);
+            console.log("📋 Lunghezza daily_schedules:", availability.daily_schedules.length);
+
+            if (availability.daily_schedules.length === 0) {
+                console.log("🚨 ATTENZIONE: daily_schedules è VUOTO - nessun giorno disponibile nel periodo");
+            } else if (Array.isArray(availability.daily_schedules[0]) && availability.daily_schedules[0].length === 0) {
+                console.log("🚨 ATTENZIONE: daily_schedules è [[]] - array di array vuoto");
+            }
+        }
+
+        // ⭐⭐ AGGIUNGI: DICHIARAZIONE VARIABILI
+        const defaultDays = state.currentService.working_days || [];
+        let specialDays = [];
+        let availStart = null;
+        let availEnd = null;
+
+        if (availability.start_date) {
+            availStart = new Date(availability.start_date);
+            availStart.setHours(0, 0, 0, 0);
+        }
+
+        if (availability.end_date) {
+            availEnd = new Date(availability.end_date);
+            availEnd.setHours(23, 59, 59, 999);
+        }
+
+        // CORREZIONE: Gestione daily_schedules semplificata
+        if (availability.daily_schedules && availability.daily_schedules.length > 0) {
+            try {
+                let schedules = availability.daily_schedules;
+
+                // Appiattisci la struttura (array di array)
+                if (Array.isArray(schedules) && schedules.length > 0 && Array.isArray(schedules[0])) {
+                    schedules = schedules.flat();
+                }
+
+                // Estrai i giorni disponibili
+                specialDays = schedules
+                    .map(item => {
+                        if (item && typeof item === 'object' && item.day) {
+                            console.log("📅 Schedule trovato:", item);
+                            return item.day;
+                        }
+                        return null;
+                    })
+                    .filter(day => day && CONFIG.DAY_NAMES.includes(day));
+
+                console.log("📅 Giorni disponibili speciali:", specialDays);
+
+            } catch (error) {
+                console.error("❌ Errore nel processing daily_schedules:", error);
+            }
+        }
+
         return {
-            defaultDays: state.currentService.working_days || [],
-            specialDays: [],
-            availStart: null,
-            availEnd: null
+            defaultDays,
+            specialDays,
+            availStart,
+            availEnd
         };
-    }
+    },
 
-    console.log("✅ Disponibilità artigiano:", availability);
-    
-    // ⭐ NUOVO: Log per daily_schedules vuoti
-    if (availability.daily_schedules) {
-        console.log("📋 Daily schedules:", availability.daily_schedules);
-        console.log("📋 Tipo daily_schedules:", typeof availability.daily_schedules);
-        console.log("📋 Lunghezza daily_schedules:", availability.daily_schedules.length);
-        
-        if (availability.daily_schedules.length === 0) {
-            console.log("🚨 ATTENZIONE: daily_schedules è VUOTO - nessun giorno disponibile nel periodo");
-        } else if (Array.isArray(availability.daily_schedules[0]) && availability.daily_schedules[0].length === 0) {
-            console.log("🚨 ATTENZIONE: daily_schedules è [[]] - array di array vuoto");
+
+    isDaySelectable(date, today, dayOfWeekStr, defaultDays, specialDays, availStart, availEnd) {
+        // 1. Controlla se la data è nel passato
+        const dateIsInFuture = !Utils.isDateInPast(date);
+        if (!dateIsInFuture) {
+            console.log(`❌ ${Utils.formatDateDDMMYYYY(date)} - Data passata`);
+            return false;
         }
-    }
 
-    // ⭐⭐ AGGIUNGI: DICHIARAZIONE VARIABILI
-    const defaultDays = state.currentService.working_days || [];
-    let specialDays = [];
-    let availStart = null;
-    let availEnd = null;
+        // ⭐⭐ NUOVO CONTROLLO: Se daily_schedules è VUOTO, la data NON è selezionabile
+        const availability = state.currentService._availability;
+        if (availability?.daily_schedules && availability.daily_schedules.length === 0) {
+            console.log(`❌ ${Utils.formatDateDDMMYYYY(date)} - Availability rule vuota (nessun giorno disponibile)`);
+            return false;
+        }
 
-    if (availability.start_date) {
-        availStart = new Date(availability.start_date);
-        availStart.setHours(0, 0, 0, 0);
-    }
+        // ⭐ CONTROLLO: Se daily_schedules è array vuoto [[]] o []
+        if (availability?.daily_schedules) {
+            try {
+                let schedules = availability.daily_schedules;
+                // Se è un array di array vuoto: [[]]
+                if (Array.isArray(schedules) && schedules.length === 1 && Array.isArray(schedules[0]) && schedules[0].length === 0) {
+                    console.log(`❌ ${Utils.formatDateDDMMYYYY(date)} - Availability rule con array vuoto [[]]`);
+                    return false;
+                }
+                // Se è un array vuoto: []
+                if (Array.isArray(schedules) && schedules.length === 0) {
+                    console.log(`❌ ${Utils.formatDateDDMMYYYY(date)} - Availability rule con array vuoto []`);
+                    return false;
+                }
+            } catch (error) {
+                console.error("❌ Errore nel controllo daily_schedules:", error);
+            }
+        }
 
-    if (availability.end_date) {
-        availEnd = new Date(availability.end_date);
-        availEnd.setHours(23, 59, 59, 999);
-    }
+        // [RESTA IL CODICE ESISTENTE...]
+        let currentAvailDays = defaultDays;
+        let isInSpecialRange = false;
 
-    // CORREZIONE: Gestione daily_schedules semplificata
-    if (availability.daily_schedules && availability.daily_schedules.length > 0) {
-        try {
-            let schedules = availability.daily_schedules;
+        // Verifica se siamo in un range speciale
+        if (availStart || availEnd) {
+            const checkDate = Utils.normalizeDate(date);
+            isInSpecialRange = true;
 
-            // Appiattisci la struttura (array di array)
-            if (Array.isArray(schedules) && schedules.length > 0 && Array.isArray(schedules[0])) {
-                schedules = schedules.flat();
+            if (availStart) {
+                const start = Utils.normalizeDate(availStart);
+                isInSpecialRange = isInSpecialRange && (checkDate >= start);
             }
 
-            // Estrai i giorni disponibili
-            specialDays = schedules
-                .map(item => {
-                    if (item && typeof item === 'object' && item.day) {
-                        console.log("📅 Schedule trovato:", item);
-                        return item.day;
-                    }
-                    return null;
-                })
-                .filter(day => day && CONFIG.DAY_NAMES.includes(day));
-
-            console.log("📅 Giorni disponibili speciali:", specialDays);
-
-        } catch (error) {
-            console.error("❌ Errore nel processing daily_schedules:", error);
-        }
-    }
-
-    return {
-        defaultDays,
-        specialDays,
-        availStart,
-        availEnd
-    };
-},
-
-
-isDaySelectable(date, today, dayOfWeekStr, defaultDays, specialDays, availStart, availEnd) {
-    // 1. Controlla se la data è nel passato
-    const dateIsInFuture = !Utils.isDateInPast(date);
-    if (!dateIsInFuture) {
-        console.log(`❌ ${Utils.formatDateDDMMYYYY(date)} - Data passata`);
-        return false;
-    }
-
-    // ⭐⭐ NUOVO CONTROLLO: Se daily_schedules è VUOTO, la data NON è selezionabile
-    const availability = state.currentService._availability;
-    if (availability?.daily_schedules && availability.daily_schedules.length === 0) {
-        console.log(`❌ ${Utils.formatDateDDMMYYYY(date)} - Availability rule vuota (nessun giorno disponibile)`);
-        return false;
-    }
-
-    // ⭐ CONTROLLO: Se daily_schedules è array vuoto [[]] o []
-    if (availability?.daily_schedules) {
-        try {
-            let schedules = availability.daily_schedules;
-            // Se è un array di array vuoto: [[]]
-            if (Array.isArray(schedules) && schedules.length === 1 && Array.isArray(schedules[0]) && schedules[0].length === 0) {
-                console.log(`❌ ${Utils.formatDateDDMMYYYY(date)} - Availability rule con array vuoto [[]]`);
-                return false;
+            if (availEnd) {
+                const end = Utils.normalizeDate(availEnd);
+                isInSpecialRange = isInSpecialRange && (checkDate <= end);
             }
-            // Se è un array vuoto: []
-            if (Array.isArray(schedules) && schedules.length === 0) {
-                console.log(`❌ ${Utils.formatDateDDMMYYYY(date)} - Availability rule con array vuoto []`);
-                return false;
-            }
-        } catch (error) {
-            console.error("❌ Errore nel controllo daily_schedules:", error);
-        }
-    }
-
-    // [RESTA IL CODICE ESISTENTE...]
-    let currentAvailDays = defaultDays;
-    let isInSpecialRange = false;
-
-    // Verifica se siamo in un range speciale
-    if (availStart || availEnd) {
-        const checkDate = Utils.normalizeDate(date);
-        isInSpecialRange = true;
-
-        if (availStart) {
-            const start = Utils.normalizeDate(availStart);
-            isInSpecialRange = isInSpecialRange && (checkDate >= start);
         }
 
-        if (availEnd) {
-            const end = Utils.normalizeDate(availEnd);
-            isInSpecialRange = isInSpecialRange && (checkDate <= end);
+        // Se siamo in range speciale E abbiamo giorni speciali VALIDI, usali
+        if (isInSpecialRange && specialDays.length > 0) {
+            currentAvailDays = specialDays;
+            console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} - Usa giorni speciali:`, specialDays);
+        } else {
+            console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} - Usa giorni default:`, defaultDays);
         }
-    }
 
-    // Se siamo in range speciale E abbiamo giorni speciali VALIDI, usali
-    if (isInSpecialRange && specialDays.length > 0) {
-        currentAvailDays = specialDays;
-        console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} - Usa giorni speciali:`, specialDays);
-    } else {
-        console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} - Usa giorni default:`, defaultDays);
-    }
+        const isAvailable = currentAvailDays.includes(dayOfWeekStr);
+        console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} (${dayOfWeekStr}) - Disponibile: ${isAvailable}`);
 
-    const isAvailable = currentAvailDays.includes(dayOfWeekStr);
-    console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} (${dayOfWeekStr}) - Disponibile: ${isAvailable}`);
-
-    return isAvailable;
-}, 
+        return isAvailable;
+    },
 
     createDayElement(day, dayOfWeekStr, date, isSelectable) {
         const dateDiv = document.createElement('div');
