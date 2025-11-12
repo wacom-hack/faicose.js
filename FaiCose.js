@@ -1003,9 +1003,10 @@ isArtisanBusyInHour(artisanSlots, hour) {
                         console.log(`🕒 Orari corretti: ${startHour}:00 - ${endHour}:00`);
 
                         // Genera le ore disponibili
-                        for (let h = startHour; h < endHour; h++) {
-                            hours.push(h);
-                        }
+                        const interval = state.currentService.duration_minutes / 60; // 120/60 = 2 ore
+for (let h = startHour; h < endHour; h += interval) {
+    hours.push(h); // → 9, 11, 13 (ogni 2 ore)
+}
 
                         console.log("📅 Ore generate:", hours);
                         return hours;
@@ -1067,10 +1068,12 @@ isArtisanBusyInHour(artisanSlots, hour) {
             statusTitle = '';
         }
 
-        btn.innerHTML = `
-        <div style="font-size: 16px; font-weight: bold;">${hour}:00</div>
-        <div style="font-size: 12px; margin-top: 4px;">${statusText}</div>
-    `;
+btn.innerHTML = `
+    <div style="font-size: 16px; font-weight: bold;">
+        ${hour}:00 - ${hour + 2}:00
+    </div>
+    <div style="font-size: 12px; margin-top: 4px;">${statusText}</div>
+`;
 
         if (buttonStyle) {
             btn.setAttribute('style', buttonStyle.replace(/style="|"/g, ''));
