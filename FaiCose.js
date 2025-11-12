@@ -799,21 +799,21 @@ const CalendarManager = {
             };
         }
 
-const ruleForCalendarDate = allRules.find(rule => {
-    const startDate = rule.start_date ? Utils.normalizeDate(new Date(rule.start_date)) : null;
-    const endDate = rule.end_date ? Utils.normalizeDate(new Date(rule.end_date)) : null;
-    const checkDate = Utils.normalizeDate(currentCalendarDate);
+        const ruleForCalendarDate = allRules.find(rule => {
+            const startDate = rule.start_date ? Utils.normalizeDate(new Date(rule.start_date)) : null;
+            const endDate = rule.end_date ? Utils.normalizeDate(new Date(rule.end_date)) : null;
+            const checkDate = Utils.normalizeDate(currentCalendarDate);
 
-    if (startDate && endDate) {
-        // ⭐⭐ CORREZIONE: Usa <= per includere l'ultimo giorno
-        return checkDate >= startDate && checkDate <= endDate;
-    } else if (startDate) {
-        return checkDate >= startDate;
-    } else if (endDate) {
-        return checkDate <= endDate;
-    }
-    return true;
-});
+            if (startDate && endDate) {
+                // ⭐⭐ CORREZIONE: Usa <= per includere l'ultimo giorno
+                return checkDate >= startDate && checkDate <= endDate;
+            } else if (startDate) {
+                return checkDate >= startDate;
+            } else if (endDate) {
+                return checkDate <= endDate;
+            }
+            return true;
+        });
 
         console.log(`📅 Rule trovata per ${Utils.formatDateDDMMYYYY(currentCalendarDate)}:`,
             ruleForCalendarDate ? `ID ${ruleForCalendarDate.id}` : "Nessuna");
@@ -909,7 +909,13 @@ const ruleForCalendarDate = allRules.find(rule => {
     },
 
     isDaySelectable(date, today, dayOfWeekStr, defaultDays, specialDays, availStart, availEnd) {
-        // 1. Controlla se la data è nel passato
+
+    const ruleForDate = this.findRuleForDate(date);
+    if (ruleForDate && this.isRuleEmpty(ruleForDate)) {
+        console.log(`🚨 ${Utils.formatDateDDMMYYYY(date)} - Rule ${ruleForDate.id} VUOTA - BLOCCA TUTTO`);
+        return false;
+    }
+
         const dateIsInFuture = !Utils.isDateInPast(date);
         if (!dateIsInFuture) {
             console.log(`❌ ${Utils.formatDateDDMMYYYY(date)} - Data passata`);
@@ -961,35 +967,35 @@ const ruleForCalendarDate = allRules.find(rule => {
     },
 
     // ⭐ METODO HELPER: Trova rule per data
-findRuleForDate(date) {
-    const allRules = state.currentService._all_availability_rules;
-    if (!allRules) return null;
+    findRuleForDate(date) {
+        const allRules = state.currentService._all_availability_rules;
+        if (!allRules) return null;
 
-    console.log(`🔍 DEBUG findRuleForDate: ${Utils.formatDateDDMMYYYY(date)}`);
-    
-    const foundRule = allRules.find(rule => {
-        const startDate = rule.start_date ? Utils.normalizeDate(new Date(rule.start_date)) : null;
-        const endDate = rule.end_date ? Utils.normalizeDate(new Date(rule.end_date)) : null;
-        const checkDate = Utils.normalizeDate(date);
+        console.log(`🔍 DEBUG findRuleForDate: ${Utils.formatDateDDMMYYYY(date)}`);
 
-        console.log(`   Rule ${rule.id}: ${startDate ? Utils.formatDateDDMMYYYY(startDate) : 'null'} - ${endDate ? Utils.formatDateDDMMYYYY(endDate) : 'null'}`);
-        
-        if (startDate && endDate) {
-            // ⭐⭐ CORREZIONE: Usa <= per endDate per includere l'ultimo giorno
-            const matches = checkDate >= startDate && checkDate <= endDate;
-            console.log(`   ${Utils.formatDateDDMMYYYY(checkDate)} >= ${Utils.formatDateDDMMYYYY(startDate)} && ${Utils.formatDateDDMMYYYY(checkDate)} <= ${Utils.formatDateDDMMYYYY(endDate)} = ${matches}`);
-            return matches;
-        } else if (startDate) {
-            return checkDate >= startDate;
-        } else if (endDate) {
-            return checkDate <= endDate;
-        }
-        return true;
-    });
+        const foundRule = allRules.find(rule => {
+            const startDate = rule.start_date ? Utils.normalizeDate(new Date(rule.start_date)) : null;
+            const endDate = rule.end_date ? Utils.normalizeDate(new Date(rule.end_date)) : null;
+            const checkDate = Utils.normalizeDate(date);
 
-    console.log(`✅ Rule trovata per ${Utils.formatDateDDMMYYYY(date)}:`, foundRule?.id || "Nessuna");
-    return foundRule;
-},
+            console.log(`   Rule ${rule.id}: ${startDate ? Utils.formatDateDDMMYYYY(startDate) : 'null'} - ${endDate ? Utils.formatDateDDMMYYYY(endDate) : 'null'}`);
+
+            if (startDate && endDate) {
+                // ⭐⭐ CORREZIONE: Usa <= per endDate per includere l'ultimo giorno
+                const matches = checkDate >= startDate && checkDate <= endDate;
+                console.log(`   ${Utils.formatDateDDMMYYYY(checkDate)} >= ${Utils.formatDateDDMMYYYY(startDate)} && ${Utils.formatDateDDMMYYYY(checkDate)} <= ${Utils.formatDateDDMMYYYY(endDate)} = ${matches}`);
+                return matches;
+            } else if (startDate) {
+                return checkDate >= startDate;
+            } else if (endDate) {
+                return checkDate <= endDate;
+            }
+            return true;
+        });
+
+        console.log(`✅ Rule trovata per ${Utils.formatDateDDMMYYYY(date)}:`, foundRule?.id || "Nessuna");
+        return foundRule;
+    },
 
     // ⭐⭐ METODO HELPER: Verifica se una rule è VUOTA (scalabile)
     isRuleEmpty(rule) {
