@@ -280,107 +280,107 @@ const API = {
         return service;
     },
 
-async getServiceBySlug(slug) {
-    const cacheKey = `service_${slug}`;
-    const cached = sessionStorage.getItem(cacheKey);
-    if (cached) {
-        const data = JSON.parse(cached);
-        if (Date.now() - data._cached < 3600000) {
-            console.log('✅ Servizio dalla cache');
-            return data.service;
+    async getServiceBySlug(slug) {
+        const cacheKey = `service_${slug}`;
+        const cached = sessionStorage.getItem(cacheKey);
+        if (cached) {
+            const data = JSON.parse(cached);
+            if (Date.now() - data._cached < 3600000) {
+                console.log('✅ Servizio dalla cache');
+                return data.service;
+            }
         }
-    }
 
-    const service = await this.request(`/services/slug/${slug}`);
+        const service = await this.request(`/services/slug/${slug}`);
 
-    if (service.artisan_id) {
-        try {
-            const artisan = await this.request(`/artisan/${service.artisan_id}`);
-            service._artisan = artisan;
+        if (service.artisan_id) {
+            try {
+                const artisan = await this.request(`/artisan/${service.artisan_id}`);
+                service._artisan = artisan;
 
-            console.log("👨‍🔧 Artigiano caricato:", artisan);
-            
-            // ⭐⭐ DEBUG COMPLETO: Mostra TUTTE le availability rules
-            console.log("📋 TUTTE le availability rules dell'artigiano:");
-            artisan._artisan_availability_rules_of_artisan.forEach((rule, index) => {
-                console.log(`=== REGOLA ${index + 1} (ID: ${rule.id}) ===`);
-                console.log("Start Date:", rule.start_date);
-                console.log("End Date:", rule.end_date);
-                console.log("Daily Schedules:", rule.daily_schedules);
-                console.log("Lunghezza Daily Schedules:", rule.daily_schedules?.length);
-                console.log("Tipo Daily Schedules:", typeof rule.daily_schedules);
-                
-                // Controllo specifico per array vuoti
-                if (rule.daily_schedules && rule.daily_schedules.length === 0) {
-                    console.log("🚨 QUESTA REGOLA HA DAILY_SCHEDULES VUOTO!");
-                }
-                if (Array.isArray(rule.daily_schedules) && rule.daily_schedules.length === 1 && 
-                    Array.isArray(rule.daily_schedules[0]) && rule.daily_schedules[0].length === 0) {
-                    console.log("🚨 QUESTA REGOLA HA DAILY_SCHEDULES [[]] (array di array vuoto)!");
-                }
-                console.log("=== FINE REGOLA ===");
-            });
+                console.log("👨‍🔧 Artigiano caricato:", artisan);
 
-            // ⭐⭐ TEST: Quale rule per quale data?
-            const findRuleForDate = (targetDate) => {
-                return artisan._artisan_availability_rules_of_artisan.find(rule => {
-                    const startDate = rule.start_date ? new Date(rule.start_date) : null;
-                    const endDate = rule.end_date ? new Date(rule.end_date) : null;
+                // ⭐⭐ DEBUG COMPLETO: Mostra TUTTE le availability rules
+                console.log("📋 TUTTE le availability rules dell'artigiano:");
+                artisan._artisan_availability_rules_of_artisan.forEach((rule, index) => {
+                    console.log(`=== REGOLA ${index + 1} (ID: ${rule.id}) ===`);
+                    console.log("Start Date:", rule.start_date);
+                    console.log("End Date:", rule.end_date);
+                    console.log("Daily Schedules:", rule.daily_schedules);
+                    console.log("Lunghezza Daily Schedules:", rule.daily_schedules?.length);
+                    console.log("Tipo Daily Schedules:", typeof rule.daily_schedules);
 
-                    if (startDate && endDate) {
-                        return targetDate >= startDate && targetDate <= endDate;
-                    } else if (startDate) {
-                        return targetDate >= startDate;
-                    } else if (endDate) {
-                        return targetDate <= endDate;
+                    // Controllo specifico per array vuoti
+                    if (rule.daily_schedules && rule.daily_schedules.length === 0) {
+                        console.log("🚨 QUESTA REGOLA HA DAILY_SCHEDULES VUOTO!");
                     }
-                    return true;
+                    if (Array.isArray(rule.daily_schedules) && rule.daily_schedules.length === 1 &&
+                        Array.isArray(rule.daily_schedules[0]) && rule.daily_schedules[0].length === 0) {
+                        console.log("🚨 QUESTA REGOLA HA DAILY_SCHEDULES [[]] (array di array vuoto)!");
+                    }
+                    console.log("=== FINE REGOLA ===");
                 });
-            };
 
-            const testDates = [
-                new Date('2025-11-12'), // Oggi
-                new Date('2025-12-01'), // Inizio ID 2
-                new Date('2025-12-15'), // Fine ID 2  
-                new Date('2025-12-17'), // Inizio ID 3
-                new Date('2025-12-25'), // Durante ID 3
-                new Date('2026-01-15')  // Durante ID 3
-            ];
+                // ⭐⭐ TEST: Quale rule per quale data?
+                const findRuleForDate = (targetDate) => {
+                    return artisan._artisan_availability_rules_of_artisan.find(rule => {
+                        const startDate = rule.start_date ? new Date(rule.start_date) : null;
+                        const endDate = rule.end_date ? new Date(rule.end_date) : null;
 
-            console.log("🔍 TEST: Quale rule per quale data?");
-            testDates.forEach(testDate => {
-                const rule = findRuleForDate(testDate);
-                console.log(`📅 ${Utils.formatDateDDMMYYYY(testDate)} → Rule ID: ${rule?.id || 'Nessuna'}`);
-            });
+                        if (startDate && endDate) {
+                            return targetDate >= startDate && targetDate <= endDate;
+                        } else if (startDate) {
+                            return targetDate >= startDate;
+                        } else if (endDate) {
+                            return targetDate <= endDate;
+                        }
+                        return true;
+                    });
+                };
 
-            // ⭐⭐ NUOVA LOGICA: Non scegliere una rule fissa, ma salva tutte le rules
-            if (artisan._artisan_availability_rules_of_artisan?.length > 0) {
-                console.log("✅ Rules disponibili, verranno scelte dinamicamente per data");
-                service._availability = null; // Non settare una rule fissa!
-                
-                // Salva TUTTE le rules nel service per usarle dopo dinamicamente
-                service._all_availability_rules = artisan._artisan_availability_rules_of_artisan;
-                console.log("📦 Tutte le rules salvate per selezione dinamica:", service._all_availability_rules.map(r => r.id));
-            } else {
-                console.log("❌ Nessuna regola di disponibilità per l'artigiano");
+                const testDates = [
+                    new Date('2025-11-12'), // Oggi
+                    new Date('2025-12-01'), // Inizio ID 2
+                    new Date('2025-12-15'), // Fine ID 2  
+                    new Date('2025-12-17'), // Inizio ID 3
+                    new Date('2025-12-25'), // Durante ID 3
+                    new Date('2026-01-15')  // Durante ID 3
+                ];
+
+                console.log("🔍 TEST: Quale rule per quale data?");
+                testDates.forEach(testDate => {
+                    const rule = findRuleForDate(testDate);
+                    console.log(`📅 ${Utils.formatDateDDMMYYYY(testDate)} → Rule ID: ${rule?.id || 'Nessuna'}`);
+                });
+
+                // ⭐⭐ NUOVA LOGICA: Non scegliere una rule fissa, ma salva tutte le rules
+                if (artisan._artisan_availability_rules_of_artisan?.length > 0) {
+                    console.log("✅ Rules disponibili, verranno scelte dinamicamente per data");
+                    service._availability = null; // Non settare una rule fissa!
+
+                    // Salva TUTTE le rules nel service per usarle dopo dinamicamente
+                    service._all_availability_rules = artisan._artisan_availability_rules_of_artisan;
+                    console.log("📦 Tutte le rules salvate per selezione dinamica:", service._all_availability_rules.map(r => r.id));
+                } else {
+                    console.log("❌ Nessuna regola di disponibilità per l'artigiano");
+                    service._availability = null;
+                    service._all_availability_rules = [];
+                }
+
+            } catch (error) {
+                console.error("❌ Errore nel caricamento artigiano:", error);
                 service._availability = null;
                 service._all_availability_rules = [];
             }
-
-        } catch (error) {
-            console.error("❌ Errore nel caricamento artigiano:", error);
-            service._availability = null;
-            service._all_availability_rules = [];
         }
-    }
 
-    sessionStorage.setItem(cacheKey, JSON.stringify({
-        service,
-        _cached: Date.now()
-    }));
+        sessionStorage.setItem(cacheKey, JSON.stringify({
+            service,
+            _cached: Date.now()
+        }));
 
-    return service;
-},
+        return service;
+    },
 
 
     async getSlots(serviceId, date) {
@@ -701,14 +701,78 @@ const CalendarManager = {
         }
     },
 
-getAvailabilityRules() {
-    // ⭐ GESTIONE CACHE: Se non ci sono _all_availability_rules, usa la logica vecchia
-    if (!state.currentService._all_availability_rules) {
-        console.log("⚠️ Usando logica vecchia (cache)");
-        const availability = state.currentService._availability;
-        
-        if (!availability) {
-            console.log("❌ Nessuna disponibilità trovata per l'artigiano");
+    getAvailabilityRules() {
+        // ⭐ GESTIONE CACHE: Se non ci sono _all_availability_rules, usa la logica vecchia
+        if (!state.currentService._all_availability_rules) {
+            console.log("⚠️ Usando logica vecchia (cache)");
+            const availability = state.currentService._availability;
+
+            if (!availability) {
+                console.log("❌ Nessuna disponibilità trovata per l'artigiano");
+                return {
+                    defaultDays: state.currentService.working_days || [],
+                    specialDays: [],
+                    availStart: null,
+                    availEnd: null
+                };
+            }
+
+            // [CODICE VECCHIO esistente...]
+            const defaultDays = state.currentService.working_days || [];
+            let specialDays = [];
+            let availStart = null;
+            let availEnd = null;
+
+            if (availability.start_date) {
+                availStart = new Date(availability.start_date);
+                availStart.setHours(0, 0, 0, 0);
+            }
+
+            if (availability.end_date) {
+                availEnd = new Date(availability.end_date);
+                availEnd.setHours(23, 59, 59, 999);
+            }
+
+            if (availability.daily_schedules && availability.daily_schedules.length > 0) {
+                try {
+                    let schedules = availability.daily_schedules;
+                    if (Array.isArray(schedules) && schedules.length > 0 && Array.isArray(schedules[0])) {
+                        schedules = schedules.flat();
+                    }
+
+                    specialDays = schedules
+                        .map(item => {
+                            if (item && typeof item === 'object' && item.day) {
+                                console.log("📅 Schedule trovato:", item);
+                                return item.day;
+                            }
+                            return null;
+                        })
+                        .filter(day => day && CONFIG.DAY_NAMES.includes(day));
+
+                    console.log("📅 Giorni disponibili speciali:", specialDays);
+                } catch (error) {
+                    console.error("❌ Errore nel processing daily_schedules:", error);
+                }
+            }
+
+            return {
+                defaultDays,
+                specialDays,
+                availStart,
+                availEnd
+            };
+        }
+
+        // ⭐⭐ NUOVA LOGICA: Selezione dinamica per data calendario
+        const currentCalendarDate = state.currentDate;
+        const allRules = state.currentService._all_availability_rules;
+
+        console.log(`🔍 Cerco rule per data calendario: ${Utils.formatDateDDMMYYYY(currentCalendarDate)}`);
+        console.log(`📦 Rules disponibili:`, allRules.map(r => r.id));
+
+        if (!allRules || allRules.length === 0) {
+            console.log("❌ Nessuna regola disponibile");
             return {
                 defaultDays: state.currentService.working_days || [],
                 specialDays: [],
@@ -717,42 +781,73 @@ getAvailabilityRules() {
             };
         }
 
-        // [CODICE VECCHIO esistente...]
+        // Trova la rule per la data del calendario
+        const ruleForCalendarDate = allRules.find(rule => {
+            const startDate = rule.start_date ? new Date(rule.start_date) : null;
+            const endDate = rule.end_date ? new Date(rule.end_date) : null;
+
+            if (startDate && endDate) {
+                return currentCalendarDate >= startDate && currentCalendarDate <= endDate;
+            } else if (startDate) {
+                return currentCalendarDate >= startDate;
+            } else if (endDate) {
+                return currentCalendarDate <= endDate;
+            }
+            return true;
+        });
+
+        console.log(`📅 Rule trovata per ${Utils.formatDateDDMMYYYY(currentCalendarDate)}:`,
+            ruleForCalendarDate ? `ID ${ruleForCalendarDate.id}` : "Nessuna");
+
+        // Se non trova rule per questa data, usa la prima come fallback
+        const activeRule = ruleForCalendarDate || allRules[0];
+
+        if (activeRule) {
+            console.log("✅ Rule attiva:", activeRule.id);
+        }
+
+        // Processa la rule attiva
         const defaultDays = state.currentService.working_days || [];
         let specialDays = [];
         let availStart = null;
         let availEnd = null;
 
-        if (availability.start_date) {
-            availStart = new Date(availability.start_date);
-            availStart.setHours(0, 0, 0, 0);
-        }
+        if (activeRule) {
+            if (activeRule.start_date) {
+                availStart = new Date(activeRule.start_date);
+                availStart.setHours(0, 0, 0, 0);
+            }
 
-        if (availability.end_date) {
-            availEnd = new Date(availability.end_date);
-            availEnd.setHours(23, 59, 59, 999);
-        }
+            if (activeRule.end_date) {
+                availEnd = new Date(activeRule.end_date);
+                availEnd.setHours(23, 59, 59, 999);
+            }
 
-        if (availability.daily_schedules && availability.daily_schedules.length > 0) {
-            try {
-                let schedules = availability.daily_schedules;
-                if (Array.isArray(schedules) && schedules.length > 0 && Array.isArray(schedules[0])) {
-                    schedules = schedules.flat();
+            // ⭐⭐ CONTROLLO CRITICO: Se daily_schedules è VUOTO, disabilita tutto
+            if (activeRule.daily_schedules && activeRule.daily_schedules.length === 0) {
+                console.log("🚨 ATTENZIONE: Rule con daily_schedules VUOTO - tutti i giorni disabilitati");
+                specialDays = []; // Nessun giorno disponibile
+            } else if (activeRule.daily_schedules && activeRule.daily_schedules.length > 0) {
+                try {
+                    let schedules = activeRule.daily_schedules;
+                    if (Array.isArray(schedules) && schedules.length > 0 && Array.isArray(schedules[0])) {
+                        schedules = schedules.flat();
+                    }
+
+                    specialDays = schedules
+                        .map(item => {
+                            if (item && typeof item === 'object' && item.day) {
+                                console.log("📅 Schedule trovato:", item);
+                                return item.day;
+                            }
+                            return null;
+                        })
+                        .filter(day => day && CONFIG.DAY_NAMES.includes(day));
+
+                    console.log("📅 Giorni disponibili speciali:", specialDays);
+                } catch (error) {
+                    console.error("❌ Errore nel processing daily_schedules:", error);
                 }
-
-                specialDays = schedules
-                    .map(item => {
-                        if (item && typeof item === 'object' && item.day) {
-                            console.log("📅 Schedule trovato:", item);
-                            return item.day;
-                        }
-                        return null;
-                    })
-                    .filter(day => day && CONFIG.DAY_NAMES.includes(day));
-
-                console.log("📅 Giorni disponibili speciali:", specialDays);
-            } catch (error) {
-                console.error("❌ Errore nel processing daily_schedules:", error);
             }
         }
 
@@ -762,169 +857,102 @@ getAvailabilityRules() {
             availStart,
             availEnd
         };
-    }
+    },
 
-    // ⭐⭐ NUOVA LOGICA: Selezione dinamica per data calendario
-    const currentCalendarDate = state.currentDate;
-    const allRules = state.currentService._all_availability_rules;
-    
-    console.log(`🔍 Cerco rule per data calendario: ${Utils.formatDateDDMMYYYY(currentCalendarDate)}`);
-    console.log(`📦 Rules disponibili:`, allRules.map(r => r.id));
-    
-    if (!allRules || allRules.length === 0) {
-        console.log("❌ Nessuna regola disponibile");
-        return {
-            defaultDays: state.currentService.working_days || [],
-            specialDays: [],
-            availStart: null,
-            availEnd: null
-        };
-    }
-
-    // Trova la rule per la data del calendario
-    const ruleForCalendarDate = allRules.find(rule => {
-        const startDate = rule.start_date ? new Date(rule.start_date) : null;
-        const endDate = rule.end_date ? new Date(rule.end_date) : null;
-
-        if (startDate && endDate) {
-            return currentCalendarDate >= startDate && currentCalendarDate <= endDate;
-        } else if (startDate) {
-            return currentCalendarDate >= startDate;
-        } else if (endDate) {
-            return currentCalendarDate <= endDate;
-        }
-        return true;
-    });
-
-    console.log(`📅 Rule trovata per ${Utils.formatDateDDMMYYYY(currentCalendarDate)}:`, 
-                ruleForCalendarDate ? `ID ${ruleForCalendarDate.id}` : "Nessuna");
-
-    // Se non trova rule per questa data, usa la prima come fallback
-    const activeRule = ruleForCalendarDate || allRules[0];
-    
-    if (activeRule) {
-        console.log("✅ Rule attiva:", activeRule.id);
-    }
-
-    // Processa la rule attiva
-    const defaultDays = state.currentService.working_days || [];
-    let specialDays = [];
-    let availStart = null;
-    let availEnd = null;
-
-    if (activeRule) {
-        if (activeRule.start_date) {
-            availStart = new Date(activeRule.start_date);
-            availStart.setHours(0, 0, 0, 0);
+    isDaySelectable(date, today, dayOfWeekStr, defaultDays, specialDays, availStart, availEnd) {
+        // 1. Controlla se la data è nel passato
+        const dateIsInFuture = !Utils.isDateInPast(date);
+        if (!dateIsInFuture) {
+            console.log(`❌ ${Utils.formatDateDDMMYYYY(date)} - Data passata`);
+            return false;
         }
 
-        if (activeRule.end_date) {
-            availEnd = new Date(activeRule.end_date);
-            availEnd.setHours(23, 59, 59, 999);
+        // ⭐⭐ CONTROLLO SCALABILE: Cerca la rule per questa data e verifica se è vuota
+        const ruleForThisDate = this.findRuleForDate(date);
+        if (ruleForThisDate && this.isRuleEmpty(ruleForThisDate)) {
+            console.log(`❌ ${Utils.formatDateDDMMYYYY(date)} - Rule ${ruleForThisDate.id} VUOTA - giorno disabilitato`);
+            return false;
         }
 
-        // ⭐⭐ CONTROLLO CRITICO: Se daily_schedules è VUOTO, disabilita tutto
-        if (activeRule.daily_schedules && activeRule.daily_schedules.length === 0) {
-            console.log("🚨 ATTENZIONE: Rule con daily_schedules VUOTO - tutti i giorni disabilitati");
-            specialDays = []; // Nessun giorno disponibile
-        } else if (activeRule.daily_schedules && activeRule.daily_schedules.length > 0) {
-            try {
-                let schedules = activeRule.daily_schedules;
-                if (Array.isArray(schedules) && schedules.length > 0 && Array.isArray(schedules[0])) {
-                    schedules = schedules.flat();
-                }
+        // ⭐ CONTROLLO: Se specialDays è VUOTO (fallback)
+        if (specialDays.length === 0) {
+            console.log(`❌ ${Utils.formatDateDDMMYYYY(date)} - Nessun giorno speciale disponibile - giorno disabilitato`);
+            return false;
+        }
 
-                specialDays = schedules
-                    .map(item => {
-                        if (item && typeof item === 'object' && item.day) {
-                            console.log("📅 Schedule trovato:", item);
-                            return item.day;
-                        }
-                        return null;
-                    })
-                    .filter(day => day && CONFIG.DAY_NAMES.includes(day));
+        let currentAvailDays = defaultDays;
+        let isInSpecialRange = false;
 
-                console.log("📅 Giorni disponibili speciali:", specialDays);
-            } catch (error) {
-                console.error("❌ Errore nel processing daily_schedules:", error);
+        // Verifica se siamo in un range speciale
+        if (availStart || availEnd) {
+            const checkDate = Utils.normalizeDate(date);
+            isInSpecialRange = true;
+
+            if (availStart) {
+                const start = Utils.normalizeDate(availStart);
+                isInSpecialRange = isInSpecialRange && (checkDate >= start);
+            }
+
+            if (availEnd) {
+                const end = Utils.normalizeDate(availEnd);
+                isInSpecialRange = isInSpecialRange && (checkDate <= end);
             }
         }
-    }
 
-    return {
-        defaultDays,
-        specialDays,
-        availStart,
-        availEnd
-    };
-},
+        // Se siamo in range speciale E abbiamo giorni speciali VALIDI, usali
+        if (isInSpecialRange && specialDays.length > 0) {
+            currentAvailDays = specialDays;
+            console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} - Usa giorni speciali:`, specialDays);
+        } else {
+            console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} - Usa giorni default:`, defaultDays);
+        }
 
-isDaySelectable(date, today, dayOfWeekStr, defaultDays, specialDays, availStart, availEnd) {
-    // 1. Controlla se la data è nel passato
-    const dateIsInFuture = !Utils.isDateInPast(date);
-    if (!dateIsInFuture) {
-        console.log(`❌ ${Utils.formatDateDDMMYYYY(date)} - Data passata`);
+        const isAvailable = currentAvailDays.includes(dayOfWeekStr);
+        console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} (${dayOfWeekStr}) - Disponibile: ${isAvailable}`);
+
+        return isAvailable;
+    },
+
+    // ⭐ METODO HELPER: Trova rule per data
+    findRuleForDate(date) {
+        const allRules = state.currentService._all_availability_rules;
+        if (!allRules) return null;
+
+        return allRules.find(rule => {
+            const startDate = rule.start_date ? new Date(rule.start_date) : null;
+            const endDate = rule.end_date ? new Date(rule.end_date) : null;
+
+            if (startDate && endDate) {
+                return date >= startDate && date <= endDate;
+            } else if (startDate) {
+                return date >= startDate;
+            } else if (endDate) {
+                return date <= endDate;
+            }
+            return true;
+        });
+    },
+
+    // ⭐⭐ METODO HELPER: Verifica se una rule è VUOTA (scalabile)
+    isRuleEmpty(rule) {
+        if (!rule.daily_schedules) return true;
+
+        const schedules = rule.daily_schedules;
+
+        // Caso 1: Array completamente vuoto []
+        if (Array.isArray(schedules) && schedules.length === 0) {
+            return true;
+        }
+
+        // Caso 2: Array di array vuoto [[]]
+        if (Array.isArray(schedules) && schedules.length === 1 &&
+            Array.isArray(schedules[0]) && schedules[0].length === 0) {
+            return true;
+        }
+
+        // Caso 3: Array con dati validi
         return false;
-    }
-
-    // ⭐⭐ CONTROLLO CRITICO: Se specialDays è VUOTO (rule con daily_schedules vuoto)
-    if (specialDays.length === 0) {
-        console.log(`❌ ${Utils.formatDateDDMMYYYY(date)} - Rule con daily_schedules VUOTO - giorno disabilitato`);
-        return false;
-    }
-
-    // ⭐ CONTROLLO: Se daily_schedules è array vuoto [[]] o []
-    const availability = state.currentService._availability;
-    if (availability?.daily_schedules) {
-        try {
-            let schedules = availability.daily_schedules;
-            // Se è un array di array vuoto: [[]]
-            if (Array.isArray(schedules) && schedules.length === 1 && Array.isArray(schedules[0]) && schedules[0].length === 0) {
-                console.log(`❌ ${Utils.formatDateDDMMYYYY(date)} - Availability rule con array vuoto [[]]`);
-                return false;
-            }
-            // Se è un array vuoto: []
-            if (Array.isArray(schedules) && schedules.length === 0) {
-                console.log(`❌ ${Utils.formatDateDDMMYYYY(date)} - Availability rule con array vuoto []`);
-                return false;
-            }
-        } catch (error) {
-            console.error("❌ Errore nel controllo daily_schedules:", error);
-        }
-    }
-
-    let currentAvailDays = defaultDays;
-    let isInSpecialRange = false;
-
-    // Verifica se siamo in un range speciale
-    if (availStart || availEnd) {
-        const checkDate = Utils.normalizeDate(date);
-        isInSpecialRange = true;
-
-        if (availStart) {
-            const start = Utils.normalizeDate(availStart);
-            isInSpecialRange = isInSpecialRange && (checkDate >= start);
-        }
-
-        if (availEnd) {
-            const end = Utils.normalizeDate(availEnd);
-            isInSpecialRange = isInSpecialRange && (checkDate <= end);
-        }
-    }
-
-    // Se siamo in range speciale E abbiamo giorni speciali VALIDI, usali
-    if (isInSpecialRange && specialDays.length > 0) {
-        currentAvailDays = specialDays;
-        console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} - Usa giorni speciali:`, specialDays);
-    } else {
-        console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} - Usa giorni default:`, defaultDays);
-    }
-
-    const isAvailable = currentAvailDays.includes(dayOfWeekStr);
-    console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} (${dayOfWeekStr}) - Disponibile: ${isAvailable}`);
-
-    return isAvailable;
-},
+    },
 
     createDayElement(day, dayOfWeekStr, date, isSelectable) {
         const dateDiv = document.createElement('div');
