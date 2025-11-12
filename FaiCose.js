@@ -702,11 +702,74 @@ const CalendarManager = {
     },
 
 getAvailabilityRules() {
-    // ⭐⭐ NUOVA LOGICA: Trova la rule corretta per la DATA CORRENTE del calendario
-    const currentCalendarDate = state.currentDate; // Data mostrata nel calendario
+    // ⭐ GESTIONE CACHE: Se non ci sono _all_availability_rules, usa la logica vecchia
+    if (!state.currentService._all_availability_rules) {
+        console.log("⚠️ Usando logica vecchia (cache)");
+        const availability = state.currentService._availability;
+        
+        if (!availability) {
+            console.log("❌ Nessuna disponibilità trovata per l'artigiano");
+            return {
+                defaultDays: state.currentService.working_days || [],
+                specialDays: [],
+                availStart: null,
+                availEnd: null
+            };
+        }
+
+        // [CODICE VECCHIO esistente...]
+        const defaultDays = state.currentService.working_days || [];
+        let specialDays = [];
+        let availStart = null;
+        let availEnd = null;
+
+        if (availability.start_date) {
+            availStart = new Date(availability.start_date);
+            availStart.setHours(0, 0, 0, 0);
+        }
+
+        if (availability.end_date) {
+            availEnd = new Date(availability.end_date);
+            availEnd.setHours(23, 59, 59, 999);
+        }
+
+        if (availability.daily_schedules && availability.daily_schedules.length > 0) {
+            try {
+                let schedules = availability.daily_schedules;
+                if (Array.isArray(schedules) && schedules.length > 0 && Array.isArray(schedules[0])) {
+                    schedules = schedules.flat();
+                }
+
+                specialDays = schedules
+                    .map(item => {
+                        if (item && typeof item === 'object' && item.day) {
+                            console.log("📅 Schedule trovato:", item);
+                            return item.day;
+                        }
+                        return null;
+                    })
+                    .filter(day => day && CONFIG.DAY_NAMES.includes(day));
+
+                console.log("📅 Giorni disponibili speciali:", specialDays);
+            } catch (error) {
+                console.error("❌ Errore nel processing daily_schedules:", error);
+            }
+        }
+
+        return {
+            defaultDays,
+            specialDays,
+            availStart,
+            availEnd
+        };
+    }
+
+    // ⭐⭐ NUOVA LOGICA: Selezione dinamica per data calendario
+    const currentCalendarDate = state.currentDate;
     const allRules = state.currentService._all_availability_rules;
     
     console.log(`🔍 Cerco rule per data calendario: ${Utils.formatDateDDMMYYYY(currentCalendarDate)}`);
+    console.log(`📦 Rules disponibili:`, allRules.map(r => r.id));
     
     if (!allRules || allRules.length === 0) {
         console.log("❌ Nessuna regola disponibile");
@@ -741,11 +804,9 @@ getAvailabilityRules() {
     
     if (activeRule) {
         console.log("✅ Rule attiva:", activeRule.id);
-        // Imposta la rule attiva per il service (temporaneamente per questa data)
-        state.currentService._availability = activeRule;
     }
 
-    // [RESTA IL CODICE ESISTENTE per processare la rule...]
+    // Processa la rule attiva
     const defaultDays = state.currentService.working_days || [];
     let specialDays = [];
     let availStart = null;
@@ -762,8 +823,11 @@ getAvailabilityRules() {
             availEnd.setHours(23, 59, 59, 999);
         }
 
-        // Processa daily_schedules
-        if (activeRule.daily_schedules && activeRule.daily_schedules.length > 0) {
+        // ⭐⭐ CONTROLLO CRITICO: Se daily_schedules è VUOTO, disabilita tutto
+        if (activeRule.daily_schedules && activeRule.daily_schedules.length === 0) {
+            console.log("🚨 ATTENZIONE: Rule con daily_schedules VUOTO - tutti i giorni disabilitati");
+            specialDays = []; // Nessun giorno disponibile
+        } else if (activeRule.daily_schedules && activeRule.daily_schedules.length > 0) {
             try {
                 let schedules = activeRule.daily_schedules;
                 if (Array.isArray(schedules) && schedules.length > 0 && Array.isArray(schedules[0])) {
