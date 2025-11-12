@@ -935,26 +935,17 @@ async getAllArtisanSlotsForDate(artisanId, date) {
 
 isArtisanBusyInHour(artisanSlots, hour) {
     console.log(`🔍 Verifica ${artisanSlots.length} slot per le ${hour}:00`);
-    console.log("📊 Slot da analizzare:", artisanSlots);
-
-    if (!artisanSlots || artisanSlots.length === 0) {
-        console.log(`✅ Artigiano LIBERO alle ${hour}:00 - nessuno slot occupato`);
-        return false;
-    }
 
     const hasConflict = artisanSlots.some(slot => {
-        if (!slot.start_time) {
-            console.log(`⚠️ Slot ${slot.id} senza start_time`);
-            return false;
-        }
+        if (!slot.start_time) return false;
 
         const slotHour = new Date(slot.start_time * 1000).getHours();
-        console.log(`⏰ Slot ${slot.id}: start_time=${slot.start_time} → ${slotHour}:00`);
+        console.log(`⏰ Slot ${slot.id}: ${slot.start_time} → ${new Date(slot.start_time * 1000)} → ${slotHour}:00`);
         
         const matches = slotHour === hour;
 
         if (matches) {
-            console.log(`🚫 CONFLITTO ALLE ${hour}:00 - Slot ${slot.id} del servizio "${slot._service?.name}"`);
+            console.log(`🚫 CONFLITTO ALLE ${hour}:00 - Slot ${slot.id}`);
         }
 
         return matches;
