@@ -859,73 +859,72 @@ getAvailabilityRules() {
     };
 },
 
-    isDaySelectable(date, today, dayOfWeekStr, defaultDays, specialDays, availStart, availEnd) {
-        // 1. Controlla se la data è nel passato
-        const dateIsInFuture = !Utils.isDateInPast(date);
-        if (!dateIsInFuture) {
-            console.log(`❌ ${Utils.formatDateDDMMYYYY(date)} - Data passata`);
-            return false;
-        }
+isDaySelectable(date, today, dayOfWeekStr, defaultDays, specialDays, availStart, availEnd) {
+    // 1. Controlla se la data è nel passato
+    const dateIsInFuture = !Utils.isDateInPast(date);
+    if (!dateIsInFuture) {
+        console.log(`❌ ${Utils.formatDateDDMMYYYY(date)} - Data passata`);
+        return false;
+    }
 
-        // ⭐⭐ NUOVO CONTROLLO: Se daily_schedules è VUOTO, la data NON è selezionabile
-        const availability = state.currentService._availability;
-        if (availability?.daily_schedules && availability.daily_schedules.length === 0) {
-            console.log(`❌ ${Utils.formatDateDDMMYYYY(date)} - Availability rule vuota (nessun giorno disponibile)`);
-            return false;
-        }
+    // ⭐⭐ CONTROLLO CRITICO: Se specialDays è VUOTO (rule con daily_schedules vuoto)
+    if (specialDays.length === 0) {
+        console.log(`❌ ${Utils.formatDateDDMMYYYY(date)} - Rule con daily_schedules VUOTO - giorno disabilitato`);
+        return false;
+    }
 
-        // ⭐ CONTROLLO: Se daily_schedules è array vuoto [[]] o []
-        if (availability?.daily_schedules) {
-            try {
-                let schedules = availability.daily_schedules;
-                // Se è un array di array vuoto: [[]]
-                if (Array.isArray(schedules) && schedules.length === 1 && Array.isArray(schedules[0]) && schedules[0].length === 0) {
-                    console.log(`❌ ${Utils.formatDateDDMMYYYY(date)} - Availability rule con array vuoto [[]]`);
-                    return false;
-                }
-                // Se è un array vuoto: []
-                if (Array.isArray(schedules) && schedules.length === 0) {
-                    console.log(`❌ ${Utils.formatDateDDMMYYYY(date)} - Availability rule con array vuoto []`);
-                    return false;
-                }
-            } catch (error) {
-                console.error("❌ Errore nel controllo daily_schedules:", error);
+    // ⭐ CONTROLLO: Se daily_schedules è array vuoto [[]] o []
+    const availability = state.currentService._availability;
+    if (availability?.daily_schedules) {
+        try {
+            let schedules = availability.daily_schedules;
+            // Se è un array di array vuoto: [[]]
+            if (Array.isArray(schedules) && schedules.length === 1 && Array.isArray(schedules[0]) && schedules[0].length === 0) {
+                console.log(`❌ ${Utils.formatDateDDMMYYYY(date)} - Availability rule con array vuoto [[]]`);
+                return false;
             }
-        }
-
-        // [RESTA IL CODICE ESISTENTE...]
-        let currentAvailDays = defaultDays;
-        let isInSpecialRange = false;
-
-        // Verifica se siamo in un range speciale
-        if (availStart || availEnd) {
-            const checkDate = Utils.normalizeDate(date);
-            isInSpecialRange = true;
-
-            if (availStart) {
-                const start = Utils.normalizeDate(availStart);
-                isInSpecialRange = isInSpecialRange && (checkDate >= start);
+            // Se è un array vuoto: []
+            if (Array.isArray(schedules) && schedules.length === 0) {
+                console.log(`❌ ${Utils.formatDateDDMMYYYY(date)} - Availability rule con array vuoto []`);
+                return false;
             }
+        } catch (error) {
+            console.error("❌ Errore nel controllo daily_schedules:", error);
+        }
+    }
 
-            if (availEnd) {
-                const end = Utils.normalizeDate(availEnd);
-                isInSpecialRange = isInSpecialRange && (checkDate <= end);
-            }
+    let currentAvailDays = defaultDays;
+    let isInSpecialRange = false;
+
+    // Verifica se siamo in un range speciale
+    if (availStart || availEnd) {
+        const checkDate = Utils.normalizeDate(date);
+        isInSpecialRange = true;
+
+        if (availStart) {
+            const start = Utils.normalizeDate(availStart);
+            isInSpecialRange = isInSpecialRange && (checkDate >= start);
         }
 
-        // Se siamo in range speciale E abbiamo giorni speciali VALIDI, usali
-        if (isInSpecialRange && specialDays.length > 0) {
-            currentAvailDays = specialDays;
-            console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} - Usa giorni speciali:`, specialDays);
-        } else {
-            console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} - Usa giorni default:`, defaultDays);
+        if (availEnd) {
+            const end = Utils.normalizeDate(availEnd);
+            isInSpecialRange = isInSpecialRange && (checkDate <= end);
         }
+    }
 
-        const isAvailable = currentAvailDays.includes(dayOfWeekStr);
-        console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} (${dayOfWeekStr}) - Disponibile: ${isAvailable}`);
+    // Se siamo in range speciale E abbiamo giorni speciali VALIDI, usali
+    if (isInSpecialRange && specialDays.length > 0) {
+        currentAvailDays = specialDays;
+        console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} - Usa giorni speciali:`, specialDays);
+    } else {
+        console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} - Usa giorni default:`, defaultDays);
+    }
 
-        return isAvailable;
-    },
+    const isAvailable = currentAvailDays.includes(dayOfWeekStr);
+    console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} (${dayOfWeekStr}) - Disponibile: ${isAvailable}`);
+
+    return isAvailable;
+},
 
     createDayElement(day, dayOfWeekStr, date, isSelectable) {
         const dateDiv = document.createElement('div');
