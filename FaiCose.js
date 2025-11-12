@@ -782,19 +782,19 @@ const CalendarManager = {
 
         // Trova la rule per la data del calendario
         const ruleForCalendarDate = allRules.find(rule => {
-        const startDate = rule.start_date ? new Date(rule.start_date) : null;
-        const endDate = rule.end_date ? new Date(rule.end_date) : null;
+            const startDate = rule.start_date ? new Date(rule.start_date) : null;
+            const endDate = rule.end_date ? new Date(rule.end_date) : null;
 
-        if (startDate && endDate) {
-            // ⭐ MODIFICA: endDate ESCLUSIVO
-            return currentCalendarDate >= startDate && currentCalendarDate < endDate;
-        } else if (startDate) {
-            return currentCalendarDate >= startDate;
-        } else if (endDate) {
-            return currentCalendarDate < endDate; 
-        }
-        return true;
-    });
+            if (startDate && endDate) {
+                // ⭐ MODIFICA: endDate ESCLUSIVO
+                return currentCalendarDate >= startDate && currentCalendarDate < endDate;
+            } else if (startDate) {
+                return currentCalendarDate >= startDate;
+            } else if (endDate) {
+                return currentCalendarDate < endDate;
+            }
+            return true;
+        });
 
         console.log(`📅 Rule trovata per ${Utils.formatDateDDMMYYYY(currentCalendarDate)}:`,
             ruleForCalendarDate ? `ID ${ruleForCalendarDate.id}` : "Nessuna");
@@ -948,11 +948,12 @@ const CalendarManager = {
             const endDate = rule.end_date ? new Date(rule.end_date) : null;
 
             if (startDate && endDate) {
-                return date >= startDate && date <= endDate;
+                // ⭐ MODIFICA: usa < invece di <= (ESCLUSIVO)
+                return date >= startDate && date < endDate;
             } else if (startDate) {
                 return date >= startDate;
             } else if (endDate) {
-                return date <= endDate;
+                return date < endDate; // ⭐ Anche qui <
             }
             return true;
         });
