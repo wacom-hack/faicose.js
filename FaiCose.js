@@ -642,64 +642,65 @@ const CalendarManager = {
     },
 
 
-render() {
-    if (!DOM.calendarGrid || !state.currentService) return;
+    render() {
+        if (!DOM.calendarGrid || !state.currentService) return;
 
-    DOM.calendarGrid.innerHTML = '';
+        DOM.calendarGrid.innerHTML = '';
 
-    const year = state.currentDate.getFullYear();
-    const month = state.currentDate.getMonth();
+        const year = state.currentDate.getFullYear();
+        const month = state.currentDate.getMonth();
 
-    DOM.monthLabel.textContent = state.currentDate.toLocaleString(CONFIG.LOCALE, {
-        month: 'long',
-        year: 'numeric'
-    });
+        DOM.monthLabel.textContent = state.currentDate.toLocaleString(CONFIG.LOCALE, {
+            month: 'long',
+            year: 'numeric'
+        });
 
-    const lastDay = new Date(year, month + 1, 0);
-    const today = Utils.normalizeDate(new Date());
-    const firstDayOfWeek = (new Date(year, month, 1).getDay() + 6) % 7;
+        const lastDay = new Date(year, month + 1, 0);
+        const today = Utils.normalizeDate(new Date());
+        const firstDayOfWeek = (new Date(year, month, 1).getDay() + 6) % 7;
 
-    // ⭐⭐ MODIFICA: Ora getAvailabilityRules ritorna allRules
-    const { defaultDays, specialDays, availStart, availEnd, allRules } = this.getAvailabilityRules();
+        // ⭐⭐ MODIFICA: Ora getAvailabilityRules ritorna allRules
+        const { defaultDays, specialDays, availStart, availEnd, allRules } = this.getAvailabilityRules();
 
-    let firstSelectable = null;
+        let firstSelectable = null;
 
-    for (let i = 0; i < firstDayOfWeek; i++) {
-        const emptyDiv = document.createElement('div');
-        emptyDiv.classList.add('div-block-6', 'empty-day');
-        DOM.calendarGrid.appendChild(emptyDiv);
-    }
-
-    for (let day = 1; day <= lastDay.getDate(); day++) {
-        const date = new Date(year, month, day);
-        const dayNum = date.getDay();
-        const dayOfWeekStr = CONFIG.DAY_NAMES[(dayNum + 6) % 7];
-
-        // ⭐⭐ MODIFICA: Passa allRules a isDaySelectable
-        const isSelectable = this.isDaySelectable(
-            date,
-            today,
-            dayOfWeekStr,
-            defaultDays,
-            specialDays,
-            availStart,
-            availEnd,
-            allRules  // ⭐⭐ PASSIAMO tutte le rules
-        );
-
-        const dateDiv = this.createDayElement(day, dayOfWeekStr, date, isSelectable);
-
-        if (isSelectable && !firstSelectable) {
-            firstSelectable = dateDiv;
+        for (let i = 0; i < firstDayOfWeek; i++) {
+            const emptyDiv = document.createElement('div');
+            emptyDiv.classList.add('div-block-6', 'empty-day');
+            DOM.calendarGrid.appendChild(emptyDiv);
         }
 
-        DOM.calendarGrid.appendChild(dateDiv);
-    }
+        for (let day = 1; day <= lastDay.getDate(); day++) {
+            const date = new Date(year, month, day);
+            const dayNum = date.getDay();
+            const dayOfWeekStr = CONFIG.DAY_NAMES[(dayNum + 6) % 7];
 
-    if (!state.selectedDate && firstSelectable) {
-        firstSelectable.click();
-    }
-},
+            // ⭐⭐ MODIFICA: Passa allRules a isDaySelectable
+            const isSelectable = this.isDaySelectable(
+                date,
+                today,
+                dayOfWeekStr,
+                defaultDays,
+                specialDays,
+                availStart,
+                availEnd,
+                allRules  // ⭐⭐ PASSIAMO tutte le rules
+            );
+
+            const dateDiv = this.createDayElement(day, dayOfWeekStr, date, isSelectable);
+
+            if (isSelectable && !firstSelectable) {
+                firstSelectable = dateDiv;
+            }
+
+            DOM.calendarGrid.appendChild(dateDiv);
+        }
+
+        if (!state.selectedDate && firstSelectable) {
+            firstSelectable.click();
+        }
+    },
+
     // Aggiungi questo metodo a CalendarManager
     isPeriodFullyBlocked(rule, date) {
         if (!this.isRuleEmpty(rule)) return false;
@@ -908,75 +909,75 @@ render() {
         return false;
     },
 
-isDaySelectable(date, today, dayOfWeekStr, defaultDays, specialDays, availStart, availEnd, allRules) {
-    // 1. Controlla se la data è nel passato
-    const dateIsInFuture = !Utils.isDateInPast(date);
-    if (!dateIsInFuture) {
-        console.log(`❌ ${Utils.formatDateDDMMYYYY(date)} - Data passata`);
-        return false;
-    }
-
-    // ⭐⭐ NUOVA LOGICA: Cerca la rule SPECIFICA per questa data
-    if (allRules) {
-        const ruleForThisDate = allRules.find(rule => {
-            const startDate = rule.start_date ? Utils.normalizeDate(new Date(rule.start_date)) : null;
-            const endDate = rule.end_date ? Utils.normalizeDate(new Date(rule.end_date)) : null;
-            const checkDate = Utils.normalizeDate(date);
-
-            if (startDate && endDate) {
-                return checkDate >= startDate && checkDate <= endDate;
-            } else if (startDate) {
-                return checkDate >= startDate;
-            } else if (endDate) {
-                return checkDate <= endDate;
-            }
-            return true;
-        });
-
-        console.log(`🔍 ${Utils.formatDateDDMMYYYY(date)} - Rule trovata:`, ruleForThisDate?.id || "Nessuna");
-
-        // ⭐⭐ SE la rule è VUOTA, disabilita IMMEDIATAMENTE
-        if (ruleForThisDate && this.isRuleEmpty(ruleForThisDate)) {
-            console.log(`🚨 ${Utils.formatDateDDMMYYYY(date)} - Rule ${ruleForThisDate.id} VUOTA - giorno DISABILITATO`);
+    isDaySelectable(date, today, dayOfWeekStr, defaultDays, specialDays, availStart, availEnd, allRules) {
+        // 1. Controlla se la data è nel passato
+        const dateIsInFuture = !Utils.isDateInPast(date);
+        if (!dateIsInFuture) {
+            console.log(`❌ ${Utils.formatDateDDMMYYYY(date)} - Data passata`);
             return false;
         }
 
-        // ⭐⭐ SE c'è una rule con daily_schedules, usa quelli
-        if (ruleForThisDate && ruleForThisDate.daily_schedules && ruleForThisDate.daily_schedules.length > 0) {
-            try {
-                let schedules = ruleForThisDate.daily_schedules;
-                if (Array.isArray(schedules) && schedules.length > 0 && Array.isArray(schedules[0])) {
-                    schedules = schedules.flat();
-                }
+        // ⭐⭐ NUOVA LOGICA: Cerca la rule SPECIFICA per questa data
+        if (allRules) {
+            const ruleForThisDate = allRules.find(rule => {
+                const startDate = rule.start_date ? Utils.normalizeDate(new Date(rule.start_date)) : null;
+                const endDate = rule.end_date ? Utils.normalizeDate(new Date(rule.end_date)) : null;
+                const checkDate = Utils.normalizeDate(date);
 
-                const ruleSpecialDays = schedules
-                    .map(item => {
-                        if (item && typeof item === 'object' && item.day) {
-                            return item.day;
-                        }
-                        return null;
-                    })
-                    .filter(day => day && CONFIG.DAY_NAMES.includes(day));
-
-                console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} - Giorni rule:`, ruleSpecialDays);
-                
-                if (ruleSpecialDays.length > 0) {
-                    const isAvailable = ruleSpecialDays.includes(dayOfWeekStr);
-                    console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} (${dayOfWeekStr}) - Disponibile nella rule: ${isAvailable}`);
-                    return isAvailable;
+                if (startDate && endDate) {
+                    return checkDate >= startDate && checkDate <= endDate;
+                } else if (startDate) {
+                    return checkDate >= startDate;
+                } else if (endDate) {
+                    return checkDate <= endDate;
                 }
-            } catch (error) {
-                console.error("❌ Errore nel processing daily_schedules:", error);
+                return true;
+            });
+
+            console.log(`🔍 ${Utils.formatDateDDMMYYYY(date)} - Rule trovata:`, ruleForThisDate?.id || "Nessuna");
+
+            // ⭐⭐ SE la rule è VUOTA, disabilita IMMEDIATAMENTE
+            if (ruleForThisDate && this.isRuleEmpty(ruleForThisDate)) {
+                console.log(`🚨 ${Utils.formatDateDDMMYYYY(date)} - Rule ${ruleForThisDate.id} VUOTA - giorno DISABILITATO`);
+                return false;
+            }
+
+            // ⭐⭐ SE c'è una rule con daily_schedules, usa quelli
+            if (ruleForThisDate && ruleForThisDate.daily_schedules && ruleForThisDate.daily_schedules.length > 0) {
+                try {
+                    let schedules = ruleForThisDate.daily_schedules;
+                    if (Array.isArray(schedules) && schedules.length > 0 && Array.isArray(schedules[0])) {
+                        schedules = schedules.flat();
+                    }
+
+                    const ruleSpecialDays = schedules
+                        .map(item => {
+                            if (item && typeof item === 'object' && item.day) {
+                                return item.day;
+                            }
+                            return null;
+                        })
+                        .filter(day => day && CONFIG.DAY_NAMES.includes(day));
+
+                    console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} - Giorni rule:`, ruleSpecialDays);
+
+                    if (ruleSpecialDays.length > 0) {
+                        const isAvailable = ruleSpecialDays.includes(dayOfWeekStr);
+                        console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} (${dayOfWeekStr}) - Disponibile nella rule: ${isAvailable}`);
+                        return isAvailable;
+                    }
+                } catch (error) {
+                    console.error("❌ Errore nel processing daily_schedules:", error);
+                }
             }
         }
-    }
 
-    // ⭐⭐ FALLBACK: Se nessuna rule applicabile, usa i giorni default
-    const isAvailable = defaultDays.includes(dayOfWeekStr);
-    console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} (${dayOfWeekStr}) - Disponibile nei default: ${isAvailable}`);
+        // ⭐⭐ FALLBACK: Se nessuna rule applicabile, usa i giorni default
+        const isAvailable = defaultDays.includes(dayOfWeekStr);
+        console.log(`📅 ${Utils.formatDateDDMMYYYY(date)} (${dayOfWeekStr}) - Disponibile nei default: ${isAvailable}`);
 
-    return isAvailable;
-},
+        return isAvailable;
+    },
 
     // ⭐ METODO HELPER: Trova rule per data
     findRuleForDate(date) {
@@ -1216,14 +1217,76 @@ const HoursManager = {
         return hasConflict;
     },
 
-getAvailabilityRules() {
-    // ⭐ GESTIONE CACHE: Se non ci sono _all_availability_rules, usa la logica vecchia
-    if (!state.currentService._all_availability_rules) {
-        console.log("⚠️ Usando logica vecchia (cache)");
-        const availability = state.currentService._availability;
+    getAvailabilityRules() {
+        // ⭐ GESTIONE CACHE: Se non ci sono _all_availability_rules, usa la logica vecchia
+        if (!state.currentService._all_availability_rules) {
+            console.log("⚠️ Usando logica vecchia (cache)");
+            const availability = state.currentService._availability;
 
-        if (!availability) {
-            console.log("❌ Nessuna disponibilità trovata per l'artigiano");
+            if (!availability) {
+                console.log("❌ Nessuna disponibilità trovata per l'artigiano");
+                return {
+                    defaultDays: state.currentService.working_days || [],
+                    specialDays: [],
+                    availStart: null,
+                    availEnd: null
+                };
+            }
+
+            // CODICE VECCHIO esistente
+            const defaultDays = state.currentService.working_days || [];
+            let specialDays = [];
+            let availStart = null;
+            let availEnd = null;
+
+            if (availability.start_date) {
+                availStart = new Date(availability.start_date);
+                availStart.setHours(0, 0, 0, 0);
+            }
+
+            if (availability.end_date) {
+                availEnd = new Date(availability.end_date);
+                availEnd.setHours(23, 59, 59, 999);
+            }
+
+            if (availability.daily_schedules && availability.daily_schedules.length > 0) {
+                try {
+                    let schedules = availability.daily_schedules;
+                    if (Array.isArray(schedules) && schedules.length > 0 && Array.isArray(schedules[0])) {
+                        schedules = schedules.flat();
+                    }
+
+                    specialDays = schedules
+                        .map(item => {
+                            if (item && typeof item === 'object' && item.day) {
+                                console.log("📅 Schedule trovato:", item);
+                                return item.day;
+                            }
+                            return null;
+                        })
+                        .filter(day => day && CONFIG.DAY_NAMES.includes(day));
+
+                    console.log("📅 Giorni disponibili speciali:", specialDays);
+                } catch (error) {
+                    console.error("❌ Errore nel processing daily_schedules:", error);
+                }
+            }
+
+            return {
+                defaultDays,
+                specialDays,
+                availStart,
+                availEnd
+            };
+        }
+
+        // ⭐⭐ NUOVA LOGICA: Non cerchiamo più una rule per il mese, ma ritorniamo TUTTE le rules
+        const allRules = state.currentService._all_availability_rules;
+
+        console.log(`📦 Tutte le rules disponibili:`, allRules.map(r => ({ id: r.id, start: r.start_date, end: r.end_date, empty: this.isRuleEmpty(r) })));
+
+        if (!allRules || allRules.length === 0) {
+            console.log("❌ Nessuna regola disponibile");
             return {
                 defaultDays: state.currentService.working_days || [],
                 specialDays: [],
@@ -1232,79 +1295,17 @@ getAvailabilityRules() {
             };
         }
 
-        // CODICE VECCHIO esistente
+        // ⭐⭐ MODIFICA: Ritorniamo tutte le rules e lasciamo che isDaySelectable le processi per ogni data
         const defaultDays = state.currentService.working_days || [];
-        let specialDays = [];
-        let availStart = null;
-        let availEnd = null;
-
-        if (availability.start_date) {
-            availStart = new Date(availability.start_date);
-            availStart.setHours(0, 0, 0, 0);
-        }
-
-        if (availability.end_date) {
-            availEnd = new Date(availability.end_date);
-            availEnd.setHours(23, 59, 59, 999);
-        }
-
-        if (availability.daily_schedules && availability.daily_schedules.length > 0) {
-            try {
-                let schedules = availability.daily_schedules;
-                if (Array.isArray(schedules) && schedules.length > 0 && Array.isArray(schedules[0])) {
-                    schedules = schedules.flat();
-                }
-
-                specialDays = schedules
-                    .map(item => {
-                        if (item && typeof item === 'object' && item.day) {
-                            console.log("📅 Schedule trovato:", item);
-                            return item.day;
-                        }
-                        return null;
-                    })
-                    .filter(day => day && CONFIG.DAY_NAMES.includes(day));
-
-                console.log("📅 Giorni disponibili speciali:", specialDays);
-            } catch (error) {
-                console.error("❌ Errore nel processing daily_schedules:", error);
-            }
-        }
 
         return {
             defaultDays,
-            specialDays,
-            availStart,
-            availEnd
+            specialDays: [], // Non usiamo più specialDays a livello di mese
+            availStart: null, // Non usiamo più a livello di mese
+            availEnd: null,   // Non usiamo più a livello di mese
+            allRules: allRules // ⭐⭐ AGGIUNGIAMO tutte le rules
         };
-    }
-
-    // ⭐⭐ NUOVA LOGICA: Non cerchiamo più una rule per il mese, ma ritorniamo TUTTE le rules
-    const allRules = state.currentService._all_availability_rules;
-
-    console.log(`📦 Tutte le rules disponibili:`, allRules.map(r => ({id: r.id, start: r.start_date, end: r.end_date, empty: this.isRuleEmpty(r)})));
-
-    if (!allRules || allRules.length === 0) {
-        console.log("❌ Nessuna regola disponibile");
-        return {
-            defaultDays: state.currentService.working_days || [],
-            specialDays: [],
-            availStart: null,
-            availEnd: null
-        };
-    }
-
-    // ⭐⭐ MODIFICA: Ritorniamo tutte le rules e lasciamo che isDaySelectable le processi per ogni data
-    const defaultDays = state.currentService.working_days || [];
-
-    return {
-        defaultDays,
-        specialDays: [], // Non usiamo più specialDays a livello di mese
-        availStart: null, // Non usiamo più a livello di mese
-        availEnd: null,   // Non usiamo più a livello di mese
-        allRules: allRules // ⭐⭐ AGGIUNGIAMO tutte le rules
-    };
-},
+    },
 
     async loadSlots() {
         const cached = CacheManager.get(state.currentService.id, state.selectedDate);
