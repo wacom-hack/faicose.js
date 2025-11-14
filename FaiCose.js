@@ -1152,9 +1152,8 @@ const HoursManager = {
 getAvailableHours() {
     const hours = [];
     const dayOfWeekStr = CONFIG.DAY_NAMES[(state.selectedDate.getDay() + 6) % 7];
-
-    // ⭐ INTERVALLO DINAMICO
     const serviceDurationHours = state.currentService.duration_minutes / 60;
+    
     console.log("🔍 Cerco orari per:", dayOfWeekStr, "Durata servizio:", serviceDurationHours + "h");
 
     // ⭐⭐ CORREZIONE: PRIMA cerca negli orari speciali
@@ -1171,13 +1170,12 @@ getAvailableHours() {
                 if (scheduleForDay) {
                     console.log("✅ Trovato orario speciale:", scheduleForDay);
                     
-                    // ⭐⭐ CORREZIONE CRITICA: NON INVERTERE start e end!
-                    startHour = parseInt(scheduleForDay.start.split(':')[0]);
-                    endHour = parseInt(scheduleForDay.end.split(':')[0]);
+                    // ⭐⭐ CORREZIONE: Dichiara le variabili qui
+                    const startHour = parseInt(scheduleForDay.start.split(':')[0]);
+                    const endHour = parseInt(scheduleForDay.end.split(':')[0]);
 
-                    console.log(`🕒 Orari speciali CORRETTI: ${startHour}:00 - ${endHour}:00, intervallo: ${serviceDurationHours}h`);
+                    console.log(`🕒 Orari speciali: ${startHour}:00 - ${endHour}:00, intervallo: ${serviceDurationHours}h`);
                     
-                    // ⭐⭐ GENERA ORE CORRETTAMENTE
                     for (let h = startHour; h < endHour; h += serviceDurationHours) {
                         hours.push(h);
                     }
@@ -1192,10 +1190,10 @@ getAvailableHours() {
 
     // ALTRIMENTI usa orari default
     console.log("🔍 Uso orari di default del servizio");
-    startHour = parseInt(state.currentService.working_hours_start.split(':')[0]);
-    endHour = parseInt(state.currentService.working_hours_end.split(':')[0]);
+    // ⭐⭐ CORREZIONE: Dichiara le variabili anche qui
+    const startHour = parseInt(state.currentService.working_hours_start.split(':')[0]);
+    const endHour = parseInt(state.currentService.working_hours_end.split(':')[0]);
 
-    // ⭐ CORREZIONE: Genera con intervallo corretto
     console.log(`🕒 Orari default: ${startHour}:00 - ${endHour}:00, intervallo: ${serviceDurationHours}h`);
     for (let h = startHour; h < endHour; h += serviceDurationHours) {
         hours.push(h);
