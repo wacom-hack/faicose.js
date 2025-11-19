@@ -1125,16 +1125,30 @@ const HoursManager = {
             DOM.hoursGrid.innerHTML = '';
             let firstAvailableHour = null;
 
-            for (const hour of hours) {
-                const isArtisanBusy = artisanBusyInfo[hour] || false;
-                const btn = this.createHourButton(hour, slots, isArtisanBusy);
+// Nel metodo render, dopo aver creato i bottoni:
+for (const hour of hours) {
+    const isArtisanBusy = artisanBusyInfo[hour] || false;
+    const btn = this.createHourButton(hour, slots, isArtisanBusy);
 
-                if (!btn.disabled && firstAvailableHour === null) {
-                    firstAvailableHour = hour;
-                }
+    if (!btn.disabled && firstAvailableHour === null) {
+        firstAvailableHour = hour;
+    }
 
-                DOM.hoursGrid.appendChild(btn);
-            }
+    DOM.hoursGrid.appendChild(btn);
+}
+
+// ⭐⭐ DEBUG: Verifica che tutti i bottoni abbiano data-hour
+console.log("📋 VERIFICA FINALE BOTTONI:");
+DOM.hoursGrid.querySelectorAll('.button-3').forEach((btn, index) => {
+    console.log(`Bottone ${index}: data-hour="${btn.getAttribute('data-hour')}"`);
+});
+
+if (firstAvailableHour !== null) {
+    console.log(`🔄 Selezione automatica prima ora disponibile: ${firstAvailableHour}`);
+    this.selectHour(firstAvailableHour);
+} else {
+    this.disableNextButton();
+}
 
             if (firstAvailableHour !== null) {
                 this.selectHour(firstAvailableHour);
@@ -1341,59 +1355,67 @@ getAvailableHours() {
         return slots;
     },
 
-    createHourButton(hour, slots, isArtisanBusy = false) {
-        const btn = document.createElement('button');
-        const serviceDurationHours = state.currentService.duration_minutes / 60;
-        const endHour = hour + serviceDurationHours;
-        btn.classList.add('button-3', 'w-button');
-        btn.setAttribute('data-hour', hour);
+createHourButton(hour, slots, isArtisanBusy = false) {
+    const btn = document.createElement('button');
+    const serviceDurationHours = state.currentService.duration_minutes / 60;
+    const endHour = hour + serviceDurationHours;
+    
+    // ⭐⭐ CORREZIONE: IMPOSTA data-hour PRIMA di tutto
+    btn.setAttribute('data-hour', hour);
+    console.log(`🆕 CREATO bottone con data-hour: ${hour}`);
+    
+    btn.classList.add('button-3', 'w-button');
 
-        const slot = this.findSlotForHour(slots, hour);
-        const availableSpots = slot ? (slot.capacity - slot.booked_count) : state.currentService.max_capacity_per_slot;
+    const slot = this.findSlotForHour(slots, hour);
+    const availableSpots = slot ? (slot.capacity - slot.booked_count) : state.currentService.max_capacity_per_slot;
 
-        // 🔥 PRIORITÀ ASSOLUTA: Artigiano occupato
-        const isFull = isArtisanBusy || availableSpots <= 0;
+    // 🔥 PRIORITÀ ASSOLUTA: Artigiano occupato
+    const isFull = isArtisanBusy || availableSpots <= 0;
 
-        let statusText, statusTitle, buttonStyle = '';
+    let statusText, statusTitle, buttonStyle = '';
 
-        if (isArtisanBusy) {
-            statusText = 'Artigiano occupato';
-            statusTitle = 'L\'artigiano ha già altri workshop in questo orario';
-            buttonStyle = 'style="background-color: #fef2f2; color: #dc2626; border-color: #fca5a5; opacity: 0.7;"';
-        } else if (availableSpots <= 0) {
-            statusText = 'Posti esauriti';
-            statusTitle = 'Tutti i posti per questo orario sono occupati';
-            buttonStyle = 'style="opacity: 0.5;"';
-        } else {
-            statusText = `${availableSpots} posti liberi`;
-            statusTitle = '';
-        }
+    if (isArtisanBusy) {
+        statusText = 'Artigiano occupato';
+        statusTitle = 'L\'artigiano ha già altri workshop in questo orario';
+        buttonStyle = 'style="background-color: #fef2f2; color: #dc2626; border-color: #fca5a5; opacity: 0.7;"';
+    } else if (availableSpots <= 0) {
+        statusText = 'Posti esauriti';
+        statusTitle = 'Tutti i posti per questo orario sono occupati';
+        buttonStyle = 'style="opacity: 0.5;"';
+    } else {
+        statusText = `${availableSpots} posti liberi`;
+        statusTitle = '';
+    }
 
-        btn.innerHTML = `
+    btn.innerHTML = `
         <div style="font-size: 16px; font-weight: bold;">
             ${hour}:00 - ${endHour}:00
         </div>
         <div style="font-size: 12px; margin-top: 4px;">${statusText}</div>
     `;
 
-        if (buttonStyle) {
-            btn.setAttribute('style', buttonStyle.replace(/style="|"/g, ''));
-        }
+    if (buttonStyle) {
+        btn.setAttribute('style', buttonStyle.replace(/style="|"/g, ''));
+    }
 
-        if (isFull) {
-            btn.disabled = true;
-            btn.classList.add('disabled');
-            btn.title = statusTitle;
-        } else {
-            btn.addEventListener('click', () => {
-                this.selectHour(hour);
-                PricingManager.update();
-                this.updateNumberInputLimit(availableSpots);
-            });
-        }
+    if (isFull) {
+        btn.disabled = true;
+        btn.classList.add('disabled');
+        btn.title = statusTitle;
+    } else {
+        btn.addEventListener('click', () => {
+            console.log(`🖱️ Cliccato bottone ora ${hour}`);
+            this.selectHour(hour);
+            PricingManager.update();
+            this.updateNumberInputLimit(availableSpots);
+        });
+    }
 
-        return btn;
-    },
+    // ⭐⭐ DEBUG FINALE: Verifica che data-hour sia stato impostato
+    console.log(`✅ Bottone finale - data-hour: ${btn.getAttribute('data-hour')}, ora: ${hour}`);
+    
+    return btn;
+},
 
     findSlotForHour(slots, hour) {
         const startTime = Utils.createTimestamp(state.selectedDate, hour) / 1000;
@@ -1401,15 +1423,31 @@ getAvailableHours() {
     },
 
 selectHour(hour) {
+    console.log(`🎯 SELECTHOUR chiamata con: ${hour}`);
     state.selectedHour = hour;
     const hourButtons = DOM.hoursGrid.querySelectorAll('.button-3');
     
+    let found = false;
     hourButtons.forEach(btn => {
+        const btnHour = btn.getAttribute('data-hour');
+        console.log(`🔍 Analizzo bottone - data-hour: ${btnHour}, tipo: ${typeof btnHour}`);
+        
         btn.classList.remove('selected');
-        if (btn.getAttribute('data-hour') == hour) {
+        
+        // Confronto con conversione a numero
+        if (btnHour !== null && Number(btnHour) === Number(hour)) {
             btn.classList.add('selected');
+            found = true;
+            console.log(`✅ BOTTONE SELEZIONATO: ${hour}:00`);
         }
     });
+
+    if (!found) {
+        console.error(`❌ NESSUN BOTTONE TROVATO per ora: ${hour}`);
+        // Debug: mostra tutti i data-hour disponibili
+        const allHours = Array.from(hourButtons).map(btn => btn.getAttribute('data-hour'));
+        console.log(`📊 Data-hour disponibili: ${allHours.join(', ')}`);
+    }
 
     DOM.nextBtn.disabled = false;
     DOM.nextBtn.classList.remove('disabled');
