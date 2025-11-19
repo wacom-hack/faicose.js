@@ -516,33 +516,64 @@ const CacheManager = {
 
 // MODAL MANAGEMENT
 const Modal = {
-    open() {
-        console.log('🔓 OPEN Modal - aggiungo classe no-scroll');
-        DOM.modalContainer.style.display = 'flex';
-        DOM.modalOverlay.style.display = 'flex';
-        DOM.bookingModal.style.display = 'block';
-        document.body.classList.add('no-scroll');
-        console.log('Classi body dopo open:', document.body.className);
-    },
+  open: function() {
+    // Salva la posizione corrente dello scroll
+    const scrollY = window.scrollY || window.pageYOffset;
+    document.body.dataset.scrollY = scrollY;
 
-    close() {
-        console.log('🔒 CLOSE Modal - rimuovo classe no-scroll');
-        DOM.modalContainer.style.display = 'none';
-        DOM.modalOverlay.style.display = 'none';
-        DOM.bookingModal.style.display = 'none';
-        document.body.classList.remove('no-scroll');
-        console.log('Classi body dopo close:', document.body.className);
-        StepNavigation.goToStep(1);
-        setTimeout(() => {
-            document.body.style.overflow = '';
-            document.body.style.position = '';
-            document.body.style.top = '';
-            document.body.style.left = '';
-            document.body.style.width = '';
-            document.body.style.height = '';
-        }, 50);
-    }
+    // Blocca lo scroll della pagina sottostante
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.left = "0";
+    document.body.style.width = "100%";
+
+    // Evita scroll accidentale del body su mobile
+    const preventBodyScroll = (e) => {
+      if (!DOM.bookingModal.contains(e.target)) {
+        e.preventDefault();
+      }
+    };
+    document.body.addEventListener("touchmove", preventBodyScroll, { passive: false });
+
+    // Mostra il modal
+    DOM.modalContainer.style.display = "flex";
+    DOM.modalOverlay.style.display = "flex";
+    DOM.bookingModal.style.display = "block";
+
+    // Gestione input: evita che il focus scrolli il body
+    const inputs = DOM.bookingModal.querySelectorAll("input, select, textarea");
+    inputs.forEach((input) => {
+      input.addEventListener("focus", () => {
+        // Non fare nulla, il body è già bloccato
+      });
+      input.addEventListener("blur", () => {
+        // Non fare nulla
+      });
+    });
+
+    // Salva la funzione per poterla rimuovere al close
+    this._preventBodyScroll = preventBodyScroll;
+  },
+
+  close: function() {
+    // Ripristina lo scroll della pagina
+    const scrollY = document.body.dataset.scrollY || 0;
+    document.body.style.position = "";
+    document.body.style.top = "";
+    document.body.style.left = "";
+    document.body.style.width = "";
+    window.scrollTo(0, scrollY);
+
+    // Rimuove il listener
+    document.body.removeEventListener("touchmove", this._preventBodyScroll);
+
+    // Nasconde il modal
+    DOM.modalContainer.style.display = "none";
+    DOM.modalOverlay.style.display = "none";
+    DOM.bookingModal.style.display = "none";
+  },
 };
+
 
 
 // STEP NAVIGATION
