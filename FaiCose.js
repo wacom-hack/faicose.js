@@ -1360,7 +1360,8 @@ createHourButton(hour, slots, isArtisanBusy = false) {
     const serviceDurationHours = state.currentService.duration_minutes / 60;
     const endHour = hour + serviceDurationHours;
     
-    // ⭐⭐ CORREZIONE: IMPOSTA data-hour PRIMA di tutto
+    // ⭐⭐ CORREZIONE: IMPOSTA type="button" esplicitamente
+    btn.setAttribute('type', 'button'); // ⬅️ QUESTA È LA CORREZIONE PRINCIPALE
     btn.setAttribute('data-hour', hour);
     console.log(`🆕 CREATO bottone con data-hour: ${hour}`);
     
@@ -1403,7 +1404,9 @@ createHourButton(hour, slots, isArtisanBusy = false) {
         btn.classList.add('disabled');
         btn.title = statusTitle;
     } else {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault(); // ⬅️ PREVIENE COMPORTAMENTO DEFAULT
+            e.stopPropagation(); // ⬅️ FERMA LA PROPAGAZIONE
             console.log(`🖱️ Cliccato bottone ora ${hour}`);
             this.selectHour(hour);
             PricingManager.update();
