@@ -1343,6 +1343,7 @@ getAvailableHours() {
 
     createHourButton(hour, slots, isArtisanBusy = false) {
         const btn = document.createElement('button');
+        btn.dataset.hour = hour;   
         const serviceDurationHours = state.currentService.duration_minutes / 60;
         const endHour = hour + serviceDurationHours;
         btn.classList.add('button-3', 'w-button');
@@ -1407,7 +1408,8 @@ selectHour(hour) {
 
     hourButtons.forEach(btn => {
         btn.classList.remove('selected');
-        if (parseFloat(btn.dataset.hour) === hour) {
+
+        if (Number(btn.dataset.hour) === hour) {
             btn.classList.add('selected');
         }
     });
