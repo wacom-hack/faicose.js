@@ -1346,7 +1346,7 @@ getAvailableHours() {
         const serviceDurationHours = state.currentService.duration_minutes / 60;
         const endHour = hour + serviceDurationHours;
         btn.classList.add('button-3', 'w-button');
-        btn.setAttribute('type', 'button');
+        btn.setAttribute('data-hour', hour);
 
         const slot = this.findSlotForHour(slots, hour);
         const availableSpots = slot ? (slot.capacity - slot.booked_count) : state.currentService.max_capacity_per_slot;
@@ -1400,19 +1400,20 @@ getAvailableHours() {
         return slots.find(s => s.start_time == startTime) || null;
     },
 
-    selectHour(hour) {
-        state.selectedHour = hour;
-        const hourButtons = DOM.hoursGrid.querySelectorAll('.button-3');
-        hourButtons.forEach(btn => {
-            btn.classList.remove('selected');
-            if (btn.querySelector('div')?.textContent.startsWith(`${hour}:`)) {
-                btn.classList.add('selected');
-            }
-        });
+selectHour(hour) {
+    state.selectedHour = hour;
+    const hourButtons = DOM.hoursGrid.querySelectorAll('.button-3');
+    
+    hourButtons.forEach(btn => {
+        btn.classList.remove('selected');
+        if (btn.getAttribute('data-hour') == hour) {
+            btn.classList.add('selected');
+        }
+    });
 
-        DOM.nextBtn.disabled = false;
-        DOM.nextBtn.classList.remove('disabled');
-    },
+    DOM.nextBtn.disabled = false;
+    DOM.nextBtn.classList.remove('disabled');
+},
 
     disableNextButton() {
         state.selectedHour = null;
