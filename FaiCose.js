@@ -1868,53 +1868,54 @@ const RecapManager = {
 
 // OPTIMIZED BOOKING MANAGER
 const BookingManager = {
-    async submit() {
-
-        if (!this.validateBooking()) {
-            return;
-        }
-
-
+async submit() {
+    if (this.validateBooking()) {
         DOM.nextBtn.disabled = true;
         DOM.nextBtn.textContent = "Elaborazione...";
-
+        
         try {
-            console.log("📤 Inizio processo di prenotazione ottimizzato...");
+            console.log("📤 Inizio processo di prenotazione...");
             const bookingData = this.prepareBookingData();
-            const response = await this.makeCompleteBookingCall(bookingData);
-
+            const bookingResult = await this.makeCompleteBookingCall(bookingData);
+            
+            // ✅ Usa il public_token dalla risposta del backend
             await this.processPayment(
-                bookingData.user_email,
-                Math.round(bookingData.total_price * 100),
-                response.booking_id
+                bookingData.user_email, 
+                Math.round(100 * bookingResult.total_price),  // Usa il total_price CALCOLATO DAL BACKEND
+                bookingResult.booking_id,
+                bookingResult.public_token  // 🎯 Importante!
             );
-
         } catch (error) {
             console.error("❌ Errore durante la prenotazione:", error);
             Utils.showError(`Errore: ${error.message}`);
             DOM.nextBtn.disabled = false;
             DOM.nextBtn.textContent = "Prenota e paga";
         }
-    },
+    }
+},
 
     prepareBookingData() {
-        const numPeople = parseInt(DOM.numInput.value) || 1;
-        const { totalPrice, extraId } = this.calculateFinalPrice(numPeople);
-        const timestamp = Utils.createTimestamp(state.selectedDate, state.selectedHour);
-
-        return {
-            user_name: DOM.nameInput.value.trim(),
-            user_email: DOM.emailInput.value.trim(),
-            user_phone: (DOM.phoneInput?.value.trim()) || "",
-            service_id: state.currentService.id,
-            selected_date: Utils.formatDateISO(state.selectedDate),
-            selected_hour: timestamp,
-            num_people: numPeople,
-            booking_extra_id: extraId || 0,
-            total_price: totalPrice
-        };
+      return {
+        user_name: DOM.nameInput.value.trim(),
+        user_email: DOM.emailInput.value.trim(), 
+        user_phone: DOM.phoneInput?.value.trim() || "",
+        service_id: state.currentService.id,
+        selected_date: Utils.formatDateISO(state.selectedDate),
+        selected_hour: Utils.createTimestamp(state.selectedDate, state.selectedHour),
+        num_people: parseInt(DOM.numInput.value) || 1,
+        booking_extra_id: this.getSelectedExtraId(),
+    };
     },
 
+getSelectedExtraId() {
+    const extraCheckbox = DOM.extrasContainer?.querySelector('input[type="checkbox"]');
+    const hasExtra = extraCheckbox?.checked && state.currentService._extra_of_service?.length > 0;
+    
+    if (hasExtra) {
+        return state.currentService._extra_of_service[0].id;
+    }
+    return null;  // o 0 se preferisci
+},
     async makeCompleteBookingCall(bookingData) {
         console.log("🚀 Invio dati prenotazione completi:", bookingData);
 
