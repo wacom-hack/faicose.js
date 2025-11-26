@@ -1126,40 +1126,66 @@ const CalendarManager = {
         state.currentDate.setMonth(state.currentDate.getMonth() + delta);
         this.render();
     },
+    
     jumpToFirstAvailableMonth() {
-        const rules = state.currentService._all_availability_rules;
-        
-        // Se non ci sono regole, rimaniamo su oggi
-        if (!rules || rules.length === 0) return;
+    const rules = state.currentService._all_availability_rules;
 
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+    // Se non ci sono regole, rimaniamo su oggi
+    if (!rules || rules.length === 0) return;
 
-        // 1. Filtriamo e Ordiniamo le regole
-        // Cerchiamo regole che non siano finite nel passato
-        const futureRules = rules
-            .map(r => ({
-                start: r.start_date ? new Date(r.start_date) : today,
-                end: r.end_date ? new Date(r.end_date) : null
-            }))
-            .filter(r => !r.end || r.end >= today) // Escludi regole scadute
-            .sort((a, b) => a.start - b.start);    // Ordina dalla più vicina
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-        if (futureRules.length > 0) {
-            const firstAvailableDate = futureRules[0].start;
-
-            // 2. Logica di Salto
-            // Se la prima regola inizia in un mese futuro rispetto a oggi, aggiorniamo currentDate
-            if (firstAvailableDate > today) {
-                console.log(`📅 Prima disponibilità trovata il ${firstAvailableDate.toLocaleDateString()}. Salto a quel mese.`);
-                
-                // Aggiorniamo la data corrente dello stato al mese della disponibilità
-                state.currentDate = new Date(firstAvailableDate);
-                
-                // Nota: Non serve settare il giorno esatto, CalendarManager.render() usa mese e anno di currentDate
-            }
+    // 1. FILTRO: Tieni solo le regole che:
+    //    a) Non sono finite nel passato
+    //    b) NON SONO VUOTE (hanno daily_schedules validi)
+    const validFutureRules = rules.filter(rule => {
+        // Controllo fine validità
+        const endDate = rule.end_date ? new Date(rule.end_date) : null;
+        if (endDate) {
+            endDate.setHours(23, 59, 59, 999);
+            if (endDate < today) return false; // Scaduta
         }
-    },
+
+        // Controllo se è una regola "bloccante" (vuota)
+        // Usa il tuo metodo helper isRuleEmpty
+        if (this.isRuleEmpty(rule)) return false; 
+
+        return true;
+    });
+
+    if (validFutureRules.length === 0) {
+        console.log("⚠️ Nessuna regola futura valida trovata. Rimango su oggi.");
+        return;
+    }
+
+    // 2. ORDINAMENTO: Dalla data di inizio più vicina
+    validFutureRules.sort((a, b) => {
+        const startA = a.start_date ? new Date(a.start_date) : new Date(0);
+        const startB = b.start_date ? new Date(b.start_date) : new Date(0);
+        return startA - startB;
+    });
+
+    // 3. SELEZIONE E SALTO
+    const firstRule = validFutureRules[0];
+    const firstDate = firstRule.start_date ? new Date(firstRule.start_date) : today;
+
+    // Se la regola inizia nel futuro (mese successivo o oltre)
+    if (firstDate > today) {
+        // Verifica che non siamo già nello stesso mese (es. oggi 1 Nov, regola inizia 15 Nov -> non saltare)
+        const isSameMonth = firstDate.getMonth() === today.getMonth() && 
+                            firstDate.getFullYear() === today.getFullYear();
+
+        if (!isSameMonth) {
+            console.log(`🚀 Salto al primo mese disponibile: ${firstDate.toLocaleString('it-IT', { month: 'long', year: 'numeric' })}`);
+            
+            // Imposta la data corrente
+            state.currentDate = new Date(firstDate);
+            // Imposta al giorno 1 per evitare bug di overflow (es. saltare dal 31 Gennaio a Febbraio)
+            state.currentDate.setDate(1); 
+        }
+    }
+}
 };
 
 
