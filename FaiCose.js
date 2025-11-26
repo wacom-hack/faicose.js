@@ -93,17 +93,16 @@ const Utils = {
         const day = String(date.getDate()).padStart(2, '0');
         return `${year}-${month}-${day}`;
     },
+
+    // ✅ FUNZIONE AGGIUNTA CORRETTAMENTE
     formatCurrency(amountInCents) {
         if (amountInCents === undefined || amountInCents === null) return '€ 0,00';
-
         const amount = amountInCents / 100;
-        
         return new Intl.NumberFormat('it-IT', { 
             style: 'currency', 
             currency: 'EUR' 
         }).format(amount);
     },
-
 
     formatDateDDMMYYYY(date) {
         if (!date) return "";
@@ -111,13 +110,6 @@ const Utils = {
         const month = String(date.getMonth() + 1).padStart(2, '0');
         const year = date.getFullYear();
         return `${day}/${month}/${year}`;
-    },
-
-
-    normalizeDate(date) {
-        const normalized = new Date(date);
-        normalized.setHours(0, 0, 0, 0);
-        return normalized;
     },
 
     createTimestamp(date, hour) {
@@ -128,7 +120,6 @@ const Utils = {
             hour, 0, 0, 0
         ).getTime();
     },
-
 
     debounce(func, wait) {
         let timeout;
@@ -197,7 +188,6 @@ const Utils = {
         }, duration);
     },
 
-
     isValidEmail(email) {
         return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
     },
@@ -210,7 +200,7 @@ const Utils = {
         return checkDate < today;
     },
 
-    // CORREZIONE: Normalizzazione data più robusta
+    // Normalizzazione data (Versione robusta)
     normalizeDate(date) {
         if (!(date instanceof Date)) {
             date = new Date(date);
