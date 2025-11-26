@@ -1880,11 +1880,11 @@ async submit() {
             
             // ✅ Usa il public_token dalla risposta del backend
             await this.processPayment(
-                bookingData.user_email, 
-                bookingResult.total_price,  // 8880 (già in centesimi)
-                bookingResult.booking_id,   // 161
-                bookingResult.public_token  // cde87b8a-ed9e-4212-9c96-6b0702da3dd4
-                );
+            bookingData.user_email, 
+            bookingResult.total_price,  // 8880 (già in centesimi)
+            bookingResult.booking_id,   // 161
+            bookingResult.public_token  // cde87b8a-ed9e-4212-9c96-6b0702da3dd4
+            );
         } catch (error) {
             console.error("❌ Errore durante la prenotazione:", error);
             Utils.showError(`Errore: ${error.message}`);
