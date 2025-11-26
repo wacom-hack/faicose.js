@@ -1126,6 +1126,40 @@ const CalendarManager = {
         state.currentDate.setMonth(state.currentDate.getMonth() + delta);
         this.render();
     },
+    jumpToFirstAvailableMonth() {
+        const rules = state.currentService._all_availability_rules;
+        
+        // Se non ci sono regole, rimaniamo su oggi
+        if (!rules || rules.length === 0) return;
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        // 1. Filtriamo e Ordiniamo le regole
+        // Cerchiamo regole che non siano finite nel passato
+        const futureRules = rules
+            .map(r => ({
+                start: r.start_date ? new Date(r.start_date) : today,
+                end: r.end_date ? new Date(r.end_date) : null
+            }))
+            .filter(r => !r.end || r.end >= today) // Escludi regole scadute
+            .sort((a, b) => a.start - b.start);    // Ordina dalla più vicina
+
+        if (futureRules.length > 0) {
+            const firstAvailableDate = futureRules[0].start;
+
+            // 2. Logica di Salto
+            // Se la prima regola inizia in un mese futuro rispetto a oggi, aggiorniamo currentDate
+            if (firstAvailableDate > today) {
+                console.log(`📅 Prima disponibilità trovata il ${firstAvailableDate.toLocaleDateString()}. Salto a quel mese.`);
+                
+                // Aggiorniamo la data corrente dello stato al mese della disponibilità
+                state.currentDate = new Date(firstAvailableDate);
+                
+                // Nota: Non serve settare il giorno esatto, CalendarManager.render() usa mese e anno di currentDate
+            }
+        }
+    },
 };
 
 
