@@ -1396,41 +1396,46 @@ const HoursManager = {
         }
     },
 
-    isArtisanBusyInHour(artisanSlots, hour) {
-        // ⭐ NUOVA VERSIONE - con controllo intervalli
-        const serviceDurationHours = state.currentService.duration_minutes / 60;
-        const currentSlotEndHour = hour + serviceDurationHours;
+isArtisanBusyInHour(slots, hour) {
+        const durationHours = state.currentService.duration_minutes / 60;
+        const checkStart = hour;
+        const checkEnd = hour + durationHours;
 
-        console.log(`🔍 Verifica ${artisanSlots.length} slot per ${hour}:00-${currentSlotEndHour}:00`);
+        // console.log(`🔍 Verifica conflitto per orario ${hour}:00 - ${checkEnd}:00`);
 
-        // DEBUG: Mostra tutti gli slot
-        artisanSlots.forEach(slot => {
-            const startTimestamp = slot.start_time > 10000000000 ? slot.start_time : slot.start_time * 1000;
-            const endTimestamp = slot.end_time > 10000000000 ? slot.end_time : slot.end_time * 1000;
-            const slotStartHour = new Date(startTimestamp).getHours();
-            const slotEndHour = new Date(endTimestamp).getHours();
-            console.log(`⏰ Slot ${slot.id}: ${slotStartHour}:00-${slotEndHour}:00`);
-        });
+        const hasConflict = slots.some(slot => {
+            // --- 🔥 MODIFICA FONDAMENTALE 🔥 ---
+            // Se lo slot occupato appartiene allo STESSO servizio che l'utente sta guardando,
+            // NON è un conflitto di artigiano. È solo una questione di capienza (gestita altrove).
+            if (slot.service_id === state.currentService.id) {
+                // console.log(`ℹ️ Slot ${slot.id} ignorato perché appartiene al servizio corrente.`);
+                return false;
+            }
+            // -----------------------------------
 
-        const hasConflict = artisanSlots.some(slot => {
             if (!slot.start_time || !slot.end_time) return false;
 
-            const startTimestamp = slot.start_time > 10000000000 ? slot.start_time : slot.start_time * 1000;
-            const endTimestamp = slot.end_time > 10000000000 ? slot.end_time : slot.end_time * 1000;
-            const slotStartHour = new Date(startTimestamp).getHours();
-            const slotEndHour = new Date(endTimestamp).getHours();
+            // Converti timestamp in ore (0-23)
+            // Gestisce sia millisecondi (13 cifre) che secondi (10 cifre)
+            const slotStartDate = new Date(slot.start_time > 10000000000 ? slot.start_time : slot.start_time * 1000);
+            const slotEndDate = new Date(slot.end_time > 10000000000 ? slot.end_time : slot.end_time * 1000);
 
-            // ⭐ CONTROLLO INTERVALLI: [hour, currentSlotEndHour] vs [slotStartHour, slotEndHour]
-            const overlaps = (hour < slotEndHour && currentSlotEndHour > slotStartHour);
+            const slotStartHour = slotStartDate.getHours() + (slotStartDate.getMinutes() / 60);
+            const slotEndHour = slotEndDate.getHours() + (slotEndDate.getMinutes() / 60);
 
-            if (overlaps) {
-                console.log(`🚫 CONFLITTO: ${hour}:00-${currentSlotEndHour}:00 con slot ${slot.id} (${slotStartHour}:00-${slotEndHour}:00)`);
+            // Logica di sovrapposizione temporale
+            // Un intervallo A (startA-endA) si sovrappone a B (startB-endB) se:
+            // startA < endB AND endA > startB
+            const isOverlapping = checkStart < slotEndHour && checkEnd > slotStartHour;
+
+            if (isOverlapping) {
+                console.log(`🚫 CONFLITTO TROVATO con altro servizio (ID: ${slot.service_id}):`, 
+                            `${slotStartHour}:00 - ${slotEndHour}:00`);
             }
 
-            return overlaps;
+            return isOverlapping;
         });
 
-        console.log(`📋 Risultato finale ${hour}:00-${currentSlotEndHour}:00: ${hasConflict ? 'OCCUPATO' : 'libero'}`);
         return hasConflict;
     },
 
