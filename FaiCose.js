@@ -1718,40 +1718,42 @@ const PricingManager = {
         }
     },
 
-calculatePricing(numPeople) {
-    // 1. Prezzo base di fallback (con parsing sicuro)
-    let finalUnitPrice = parseFloat(state.currentService.base_price) || 0;
+    // --- SEZIONE CRITICA CORRETTA ---
+    calculatePricing(numPeople) {
+        // 1. Prezzo base di fallback (nel caso non ci siano fasce)
+        let finalUnitPrice = state.currentService.base_price;
 
-    // 2. Cerca la fascia di prezzo corretta
-    if (state.currentService._service_prices?.length > 0) {
-        const matched = state.currentService._service_prices.find(p =>
-            numPeople >= p.min_people && numPeople <= p.max_people
-        );
-        
-        if (matched) {
-            // CORREZIONE QUI: Usiamo 'retail_price' invece di 'price'
-            if (matched.retail_price !== undefined && matched.retail_price !== null) {
-                finalUnitPrice = parseFloat(matched.retail_price);
+        // 2. Cerca la fascia di prezzo corretta (Tiered Pricing)
+        if (state.currentService._service_prices?.length > 0) {
+            const matched = state.currentService._service_prices.find(p =>
+                numPeople >= p.min_people && numPeople <= p.max_people
+            );
+            
+            if (matched) {
+                // USIAMO IL PREZZO DIRETTAMENTE (È GIÀ RETAIL)
+                finalUnitPrice = parseFloat(matched.price);
             } else {
-                console.warn("⚠️ Fascia trovata, ma 'retail_price' è mancante:", matched);
+                 console.warn(`Nessuna fascia di prezzo trovata per ${numPeople} persone. Uso il base_price.`);
             }
         }
-    }
 
-    // 3. Calcolo Extra
-    let extraCost = 0;
-    const checkbox = DOM.extrasContainer?.querySelector("input[type='checkbox']");
-    if (checkbox?.checked && state.currentService._extra_of_service?.length > 0) {
-        const extra = state.currentService._extra_of_service[0];
-        const extraPrice = parseFloat(extra.price) || 0;
-        extraCost = extra.per_person ? extraPrice * numPeople : extraPrice;
-    }
+        // NOTA: Ho rimosso la moltiplicazione * (1 + fee).
+        // Il prezzo nel DB è quello finale che paga il cliente.
 
-    // 4. Totale
-    const totalPrice = (finalUnitPrice * numPeople) + extraCost;
+        // 3. Calcolo Extra
+        let extraCost = 0;
+        const checkbox = DOM.extrasContainer?.querySelector("input[type='checkbox']");
+        if (checkbox?.checked && state.currentService._extra_of_service?.length > 0) {
+            const extra = state.currentService._extra_of_service[0];
+            extraCost = extra.per_person ? parseFloat(extra.price) * numPeople : parseFloat(extra.price);
+        }
 
-    return { unitPrice: finalUnitPrice, extraCost, totalPrice };
-},
+        // 4. Totale
+        const totalPrice = (finalUnitPrice * numPeople) + extraCost;
+
+        return { unitPrice: finalUnitPrice, extraCost, totalPrice };
+    },
+    // --------------------------------
 
     updatePeopleText(numPeople, costPerPerson) {
         const personLabel = numPeople === 1 ? "persona" : "persone";
