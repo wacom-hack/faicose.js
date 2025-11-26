@@ -1619,13 +1619,16 @@ const PricingManager = {
     update() {
         if (!state.currentService) return;
 
+        // Assicuriamoci che numPeople sia almeno 1 e un numero intero
         const numPeople = Math.max(1, parseInt(DOM.numInput.value) || 1);
         const availableSpots = this.getActualAvailableSpots();
-        const { basePrice, extraCost, totalPrice } = this.calculatePricing(numPeople);
+        
+        // Calcoliamo i prezzi (CORRETTO: Senza fee aggiuntive)
+        const { unitPrice, extraCost, totalPrice } = this.calculatePricing(numPeople);
 
-        this.updatePeopleText(numPeople, basePrice);
+        this.updatePeopleText(numPeople, unitPrice);
         this.updateExtraRecap(extraCost);
-        this.updateTotalPrice(numPeople, basePrice, totalPrice);
+        this.updateTotalPrice(numPeople, unitPrice, totalPrice);
         this.updateCapacityNotice(numPeople, availableSpots);
         this.updateNextButtonState(numPeople, availableSpots);
         this.updateInputMaxLimit(availableSpots);
@@ -1635,7 +1638,6 @@ const PricingManager = {
         if (!state.currentService || !state.selectedDate || state.selectedHour === null) {
             return null;
         }
-
         try {
             const cacheKey = CacheManager.generateKey(state.currentService.id, state.selectedDate);
             const cachedSlots = state.slotsCache.get(cacheKey);
@@ -1645,9 +1647,7 @@ const PricingManager = {
                 const slot = cachedSlots.data.find(s => s.start_time === startTime);
                 return slot || null;
             }
-
             return null;
-
         } catch (error) {
             console.error("Errore nel trovare lo slot selezionato:", error);
             return null;
@@ -1658,18 +1658,13 @@ const PricingManager = {
         if (!state.currentService) {
             return state.currentService?.max_capacity_per_slot || 8;
         }
-
         const slot = this.findSelectedSlot();
-
         if (slot) {
-
             const available = slot.capacity - (slot.booked_count || 0);
             return available;
         }
-
         return state.currentService.max_capacity_per_slot;
     },
-
 
     updateInputMaxLimit(availableSpots) {
         if (DOM.numInput) {
@@ -1689,11 +1684,9 @@ const PricingManager = {
 
     updateNextButtonState(numPeople, maxAllowed) {
         const isOverCapacity = numPeople > maxAllowed;
-
         if (DOM.nextBtn) {
             DOM.nextBtn.disabled = isOverCapacity;
             DOM.nextBtn.classList.toggle('disabled', isOverCapacity);
-
             if (isOverCapacity) {
                 DOM.nextBtn.title = `Massimo ${maxAllowed} persone per questo orario`;
             } else {
@@ -1704,7 +1697,6 @@ const PricingManager = {
 
     updateCapacityNotice(numPeople, maxAllowed) {
         let notice = document.querySelector(".max-capacity-notice");
-
         if (!notice) {
             notice = document.createElement("div");
             notice.classList.add("max-capacity-notice");
@@ -1725,30 +1717,43 @@ const PricingManager = {
             notice.style.color = "#22c55e";
         }
     },
+
+    // --- SEZIONE CRITICA CORRETTA ---
     calculatePricing(numPeople) {
-        let basePrice = state.currentService.base_price;
+        // 1. Prezzo base di fallback (nel caso non ci siano fasce)
+        let finalUnitPrice = state.currentService.base_price;
 
-
+        // 2. Cerca la fascia di prezzo corretta (Tiered Pricing)
         if (state.currentService._service_prices?.length > 0) {
             const matched = state.currentService._service_prices.find(p =>
                 numPeople >= p.min_people && numPeople <= p.max_people
             );
-            if (matched) basePrice = matched.price;
+            
+            if (matched) {
+                // USIAMO IL PREZZO DIRETTAMENTE (È GIÀ RETAIL)
+                finalUnitPrice = parseFloat(matched.price);
+            } else {
+                 console.warn(`Nessuna fascia di prezzo trovata per ${numPeople} persone. Uso il base_price.`);
+            }
         }
 
-        const costPerPersonWithFee = basePrice * (1 + state.currentService.platform_fee_percent / 100);
+        // NOTA: Ho rimosso la moltiplicazione * (1 + fee).
+        // Il prezzo nel DB è quello finale che paga il cliente.
 
+        // 3. Calcolo Extra
         let extraCost = 0;
         const checkbox = DOM.extrasContainer?.querySelector("input[type='checkbox']");
         if (checkbox?.checked && state.currentService._extra_of_service?.length > 0) {
             const extra = state.currentService._extra_of_service[0];
-            extraCost = extra.per_person ? extra.price * numPeople : extra.price;
+            extraCost = extra.per_person ? parseFloat(extra.price) * numPeople : parseFloat(extra.price);
         }
 
-        const totalPrice = costPerPersonWithFee * numPeople + extraCost;
+        // 4. Totale
+        const totalPrice = (finalUnitPrice * numPeople) + extraCost;
 
-        return { basePrice: costPerPersonWithFee, extraCost, totalPrice };
+        return { unitPrice: finalUnitPrice, extraCost, totalPrice };
     },
+    // --------------------------------
 
     updatePeopleText(numPeople, costPerPerson) {
         const personLabel = numPeople === 1 ? "persona" : "persone";
