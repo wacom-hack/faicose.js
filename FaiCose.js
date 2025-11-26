@@ -1619,66 +1619,52 @@ const PricingManager = {
     update() {
         if (!state.currentService) return;
 
-        // Assicuriamoci che numPeople sia almeno 1 e un numero intero
+        // Assicuriamoci che numPeople sia valido
         const numPeople = Math.max(1, parseInt(DOM.numInput.value) || 1);
         const availableSpots = this.getActualAvailableSpots();
         
-        // Calcoliamo i prezzi (CORRETTO: Senza fee aggiuntive)
+        // Calcolo prezzi
         const { unitPrice, extraCost, totalPrice } = this.calculatePricing(numPeople);
 
+        // Aggiornamento UI base
         this.updatePeopleText(numPeople, unitPrice);
         this.updateExtraRecap(extraCost);
         this.updateTotalPrice(numPeople, unitPrice, totalPrice);
+        
+        // Aggiornamento Notifiche (Capacità + Risparmio)
         this.updateCapacityNotice(numPeople, availableSpots);
+        this.updateSavingsNotice(numPeople, unitPrice); // <--- NUOVA FUNZIONE
         this.updateNextButtonState(numPeople, availableSpots);
         this.updateInputMaxLimit(availableSpots);
     },
 
+    // ... (findSelectedSlot, getActualAvailableSpots, updateInputMaxLimit rimangono uguali) ...
     findSelectedSlot() {
-        if (!state.currentService || !state.selectedDate || state.selectedHour === null) {
-            return null;
-        }
+        if (!state.currentService || !state.selectedDate || state.selectedHour === null) return null;
         try {
             const cacheKey = CacheManager.generateKey(state.currentService.id, state.selectedDate);
             const cachedSlots = state.slotsCache.get(cacheKey);
-
             if (cachedSlots && cachedSlots.data) {
                 const startTime = Utils.createTimestamp(state.selectedDate, state.selectedHour);
-                const slot = cachedSlots.data.find(s => s.start_time === startTime);
-                return slot || null;
+                return cachedSlots.data.find(s => s.start_time === startTime) || null;
             }
             return null;
-        } catch (error) {
-            console.error("Errore nel trovare lo slot selezionato:", error);
-            return null;
-        }
+        } catch (error) { console.error(error); return null; }
     },
 
     getActualAvailableSpots() {
-        if (!state.currentService) {
-            return state.currentService?.max_capacity_per_slot || 8;
-        }
+        if (!state.currentService) return state.currentService?.max_capacity_per_slot || 8;
         const slot = this.findSelectedSlot();
-        if (slot) {
-            const available = slot.capacity - (slot.booked_count || 0);
-            return available;
-        }
-        return state.currentService.max_capacity_per_slot;
+        return slot ? slot.capacity - (slot.booked_count || 0) : state.currentService.max_capacity_per_slot;
     },
 
     updateInputMaxLimit(availableSpots) {
         if (DOM.numInput) {
             const serviceMax = state.currentService.max_capacity_per_slot;
             const actualMax = Math.min(availableSpots, serviceMax);
-
             DOM.numInput.setAttribute('max', actualMax);
-            DOM.numInput.setAttribute('title', `Massimo ${actualMax} persone per questo orario`);
-
             const currentValue = parseInt(DOM.numInput.value) || 1;
-            if (currentValue > actualMax) {
-                DOM.numInput.value = actualMax;
-                Utils.showInfo(`Numero persone aggiornato a ${actualMax} (posti disponibili)`);
-            }
+            if (currentValue > actualMax) DOM.numInput.value = actualMax;
         }
     },
 
@@ -1687,11 +1673,7 @@ const PricingManager = {
         if (DOM.nextBtn) {
             DOM.nextBtn.disabled = isOverCapacity;
             DOM.nextBtn.classList.toggle('disabled', isOverCapacity);
-            if (isOverCapacity) {
-                DOM.nextBtn.title = `Massimo ${maxAllowed} persone per questo orario`;
-            } else {
-                DOM.nextBtn.title = "";
-            }
+            DOM.nextBtn.title = isOverCapacity ? `Massimo ${maxAllowed} persone` : "";
         }
     },
 
@@ -1700,90 +1682,124 @@ const PricingManager = {
         if (!notice) {
             notice = document.createElement("div");
             notice.classList.add("max-capacity-notice");
-            if (DOM.numInput?.parentNode) {
-                DOM.numInput.insertAdjacentElement('afterend', notice);
-            }
+            if (DOM.numInput?.parentNode) DOM.numInput.insertAdjacentElement('afterend', notice);
         }
+        
+        // Resetta stile se c'è un messaggio di risparmio attivo
+        const savingsActive = document.querySelector(".savings-notice");
+        if(savingsActive) notice.style.marginBottom = "0px";
 
         const availableSpots = maxAllowed - numPeople;
-        notice.style.cssText = "color: #666; font-size: 14px; margin-top: 0.5rem;";
+        notice.style.cssText = "color: #666; font-size: 13px; margin-top: 4px; text-align: center;";
 
         if (availableSpots === 0) {
-            notice.textContent = ` Tutti i ${maxAllowed} posti sono stati prenotati`;
+            notice.textContent = `⚠️ Ultimi posti disponibili!`;
             notice.style.color = "#f59e0b";
-            notice.style.fontWeight = "bold";
         } else {
-            notice.textContent = `${availableSpots} posti disponibili su ${maxAllowed}`;
-            notice.style.color = "#22c55e";
+            notice.textContent = `Disponibilità: ${availableSpots} posti`;
         }
     },
 
-calculatePricing(numPeople) {
-    // 1. Prezzo base di fallback (con parsing sicuro)
-    let finalUnitPrice = parseFloat(state.currentService.base_price) || 0;
+    // --- NUOVA FUNZIONE PER MOSTRARE IL RISPARMIO ---
+    updateSavingsNotice(numPeople, currentUnitPrice) {
+        // Cerca o crea l'elemento per la notifica
+        let savingsNotice = document.querySelector(".savings-notice");
+        if (!savingsNotice) {
+            savingsNotice = document.createElement("div");
+            savingsNotice.classList.add("savings-notice");
+            // Inseriscilo dopo il testo dei prezzi o dopo l'input
+            const target = document.querySelector(".people-number-text") || DOM.numInput?.parentNode;
+            if (target) target.insertAdjacentElement('afterend', savingsNotice);
+        }
 
-    // 2. Cerca la fascia di prezzo corretta
-    if (state.currentService._service_prices?.length > 0) {
-        const matched = state.currentService._service_prices.find(p =>
-            numPeople >= p.min_people && numPeople <= p.max_people
+        // Se non ci sono prezzi scaglionati, nascondi e esci
+        if (!state.currentService._service_prices || state.currentService._service_prices.length === 0) {
+            savingsNotice.style.display = "none";
+            return;
+        }
+
+        // 1. Ordina le fasce per numero di persone crescente
+        const tiers = [...state.currentService._service_prices].sort((a, b) => a.min_people - b.min_people);
+
+        // 2. Trova la PROSSIMA fascia vantaggiosa
+        // Deve avere min_people > numPeople attuale E un prezzo più basso
+        const nextBetterTier = tiers.find(t => 
+            t.min_people > numPeople && 
+            (parseFloat(t.retail_price || t.price) < currentUnitPrice)
         );
-        
-        if (matched) {
-            // CORREZIONE QUI: Usiamo 'retail_price' invece di 'price'
-            if (matched.retail_price !== undefined && matched.retail_price !== null) {
-                finalUnitPrice = parseFloat(matched.retail_price);
-            } else {
-                console.warn("⚠️ Fascia trovata, ma 'retail_price' è mancante:", matched);
+
+        if (nextBetterTier) {
+            const nextPrice = parseFloat(nextBetterTier.retail_price || nextBetterTier.price);
+            const neededPeople = nextBetterTier.min_people - numPeople;
+            const savingPerPerson = currentUnitPrice - nextPrice;
+            
+            // Messaggio dinamico
+            const personWord = neededPeople === 1 ? "persona" : "persone";
+            
+            savingsNotice.innerHTML = `
+                <div style="background-color: #ecfdf5; border: 1px solid #10b981; color: #047857; padding: 8px 12px; border-radius: 6px; font-size: 13px; margin-top: 8px; line-height: 1.4; display: flex; align-items: start; gap: 8px;">
+                    <span style="font-size: 16px;">💡</span>
+                    <div>
+                        <strong>Risparmia ${savingPerPerson.toFixed(0)}€ a testa!</strong><br>
+                        Aggiungi <strong>${neededPeople} ${personWord}</strong> per sbloccare la tariffa da <strong>${nextPrice.toFixed(0)}€</strong>.
+                    </div>
+                </div>
+            `;
+            savingsNotice.style.display = "block";
+        } else {
+            savingsNotice.style.display = "none";
+        }
+    },
+
+    calculatePricing(numPeople) {
+        let finalUnitPrice = parseFloat(state.currentService.base_price) || 0;
+
+        if (state.currentService._service_prices?.length > 0) {
+            const matched = state.currentService._service_prices.find(p =>
+                numPeople >= p.min_people && numPeople <= p.max_people
+            );
+            
+            if (matched) {
+                const priceVal = matched.retail_price !== undefined ? matched.retail_price : matched.price;
+                if (priceVal !== undefined && priceVal !== null) {
+                    finalUnitPrice = parseFloat(priceVal);
+                }
             }
         }
-    }
 
-    // 3. Calcolo Extra
-    let extraCost = 0;
-    const checkbox = DOM.extrasContainer?.querySelector("input[type='checkbox']");
-    if (checkbox?.checked && state.currentService._extra_of_service?.length > 0) {
-        const extra = state.currentService._extra_of_service[0];
-        const extraPrice = parseFloat(extra.price) || 0;
-        extraCost = extra.per_person ? extraPrice * numPeople : extraPrice;
-    }
+        let extraCost = 0;
+        const checkbox = DOM.extrasContainer?.querySelector("input[type='checkbox']");
+        if (checkbox?.checked && state.currentService._extra_of_service?.length > 0) {
+            const extra = state.currentService._extra_of_service[0];
+            const extraPrice = parseFloat(extra.price) || 0;
+            extraCost = extra.per_person ? extraPrice * numPeople : extraPrice;
+        }
 
-    // 4. Totale
-    const totalPrice = (finalUnitPrice * numPeople) + extraCost;
+        const totalPrice = (finalUnitPrice * numPeople) + extraCost;
 
-    return { unitPrice: finalUnitPrice, extraCost, totalPrice };
-},
+        return { unitPrice: finalUnitPrice, extraCost, totalPrice };
+    },
 
     updatePeopleText(numPeople, costPerPerson) {
         const personLabel = numPeople === 1 ? "persona" : "persone";
-
-        if (DOM.peopleText) {
-            DOM.peopleText.textContent = `${numPeople} ${personLabel} × ${costPerPerson.toFixed(2)}€ a testa`;
-        }
-
-        if (DOM.totalText) {
-            DOM.totalText.textContent = `${numPeople} × ${costPerPerson.toFixed(2)}€`;
-        }
+        if (DOM.peopleText) DOM.peopleText.textContent = `${numPeople} ${personLabel} × ${costPerPerson.toFixed(2)}€`;
+        if (DOM.totalText) DOM.totalText.textContent = `${numPeople} × ${costPerPerson.toFixed(2)}€`;
     },
 
     updateExtraRecap(extraCost) {
         const extraRecap = document.querySelector(".recap-step2.extra-hidden.extra-lable");
         if (!extraRecap) return;
-
         if (extraCost > 0) {
             extraRecap.style.display = "flex";
             const priceSpan = extraRecap.querySelector(".w-embed:nth-child(2) .my-span-class");
-            if (priceSpan) {
-                priceSpan.textContent = `${extraCost.toFixed(2)}€`;
-            }
+            if (priceSpan) priceSpan.textContent = `${extraCost.toFixed(2)}€`;
         } else {
             extraRecap.style.display = "none";
         }
     },
 
     updateTotalPrice(numPeople, costPerPerson, totalPrice) {
-        if (DOM.totalPrice) {
-            DOM.totalPrice.textContent = `${totalPrice.toFixed(2)}€`;
-        }
+        if (DOM.totalPrice) DOM.totalPrice.textContent = `${totalPrice.toFixed(2)}€`;
     }
 };
 
