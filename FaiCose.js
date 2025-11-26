@@ -2135,13 +2135,60 @@ const ServiceLoader = {
             CalendarManager.render();
             ExtrasManager.render();
             PricingManager.update();
+            this.updateDiscountBanner();
             StepNavigation.goToStep(1);
 
         } catch (error) {
             console.error("❌ Errore nel caricamento del servizio:", error);
             Utils.showError("Impossibile caricare il servizio. Riprova.");
         }
-    }
+    },
+    // Funzione per gestire il banner dinamico
+    updateDiscountBanner() {
+        const banner = document.getElementById('group-discount-banner');
+        if (!banner || !state.currentService) return;
+
+        // 1. Prezzi base
+        const basePrice = parseFloat(state.currentService.base_price) || 0;
+        const prices = state.currentService._service_prices || [];
+
+        // 2. Cerchiamo la prima fascia "Gruppo" (minimo 3 persone)
+        // Ordiniamo per numero persone crescente
+        const groupTier = prices
+            .filter(p => p.min_people >= 3)
+            .sort((a, b) => a.min_people - b.min_people)[0];
+
+        // 3. Valutiamo se mostrare il banner
+        if (groupTier && parseFloat(groupTier.retail_price) < basePrice) {
+            
+            const groupPrice = parseFloat(groupTier.retail_price);
+            const minPeople = groupTier.min_people;
+            const saving = basePrice - groupPrice;
+
+            // OPZIONALE: Mostra solo se il risparmio è rilevante (es. > 3€)
+            if (saving < 3) {
+                banner.style.display = 'none';
+                return;
+            }
+
+            // Formattazione prezzo (es. "205,00 €")
+            // Moltiplichiamo per 100 perché Utils.formatCurrency si aspetta centesimi
+            const formattedPrice = Utils.formatCurrency(groupPrice * 100);
+
+            // Iniettiamo il testo
+            banner.innerHTML = `
+                <strong>👥 Sconto Gruppi:</strong><br>
+                Prenota per ${minPeople} o più persone: il prezzo scende a <strong>${formattedPrice}</strong> a testa!
+            `;
+            
+            // Mostriamo il box
+            banner.style.display = 'block';
+            
+        } else {
+            // Nessuno sconto o gruppo non configurato -> Nascondi
+            banner.style.display = 'none';
+        }
+    },
 };
 
 
