@@ -1725,30 +1725,40 @@ const PricingManager = {
             notice.style.color = "#22c55e";
         }
     },
-    calculatePricing(numPeople) {
-        let basePrice = state.currentService.base_price;
+calculatePricing(numPeople) {
+    // 1. Prezzo base di fallback (con parsing sicuro)
+    let finalUnitPrice = parseFloat(state.currentService.base_price) || 0;
 
-
-        if (state.currentService._service_prices?.length > 0) {
-            const matched = state.currentService._service_prices.find(p =>
-                numPeople >= p.min_people && numPeople <= p.max_people
-            );
-            if (matched) basePrice = matched.price;
+    // 2. Cerca la fascia di prezzo corretta
+    if (state.currentService._service_prices?.length > 0) {
+        const matched = state.currentService._service_prices.find(p =>
+            numPeople >= p.min_people && numPeople <= p.max_people
+        );
+        
+        if (matched) {
+            // CORREZIONE QUI: Usiamo 'retail_price' invece di 'price'
+            if (matched.retail_price !== undefined && matched.retail_price !== null) {
+                finalUnitPrice = parseFloat(matched.retail_price);
+            } else {
+                console.warn("⚠️ Fascia trovata, ma 'retail_price' è mancante:", matched);
+            }
         }
+    }
 
-        const costPerPersonWithFee = basePrice * (1 + state.currentService.platform_fee_percent / 100);
+    // 3. Calcolo Extra
+    let extraCost = 0;
+    const checkbox = DOM.extrasContainer?.querySelector("input[type='checkbox']");
+    if (checkbox?.checked && state.currentService._extra_of_service?.length > 0) {
+        const extra = state.currentService._extra_of_service[0];
+        const extraPrice = parseFloat(extra.price) || 0;
+        extraCost = extra.per_person ? extraPrice * numPeople : extraPrice;
+    }
 
-        let extraCost = 0;
-        const checkbox = DOM.extrasContainer?.querySelector("input[type='checkbox']");
-        if (checkbox?.checked && state.currentService._extra_of_service?.length > 0) {
-            const extra = state.currentService._extra_of_service[0];
-            extraCost = extra.per_person ? extra.price * numPeople : extra.price;
-        }
+    // 4. Totale
+    const totalPrice = (finalUnitPrice * numPeople) + extraCost;
 
-        const totalPrice = costPerPersonWithFee * numPeople + extraCost;
-
-        return { basePrice: costPerPersonWithFee, extraCost, totalPrice };
-    },
+    return { unitPrice: finalUnitPrice, extraCost, totalPrice };
+},
 
     updatePeopleText(numPeople, costPerPerson) {
         const personLabel = numPeople === 1 ? "persona" : "persone";
