@@ -1868,78 +1868,54 @@ const RecapManager = {
 
 // OPTIMIZED BOOKING MANAGER
 const BookingManager = {
-    async submit() {
-        console.log("🚀 submit() chiamato");
-        console.log("Current state:", state);
-        console.log("DOM inputs:", {
-            name: DOM.nameInput.value,
-            email: DOM.emailInput.value,
-            phone: DOM.phoneInput?.value,
-            numPeople: DOM.numInput.value,
-            gdpr: DOM.gdprCheckbox.checked
-        });
-
-        if (this.validateBooking()) {
-            DOM.nextBtn.disabled = true;
-            DOM.nextBtn.textContent = "Elaborazione...";
+async submit() {
+    if (this.validateBooking()) {
+        DOM.nextBtn.disabled = true;
+        DOM.nextBtn.textContent = "Elaborazione...";
+        
+        try {
+            console.log("📤 Inizio processo di prenotazione...");
+            const bookingData = this.prepareBookingData();
+            const bookingResult = await this.makeCompleteBookingCall(bookingData);
             
-            try {
-                console.log("📤 Inizio processo di prenotazione...");
-                
-                // Prepara dati prenotazione
-                const bookingData = this.prepareBookingData();
-                console.log("📦 bookingData preparati:", bookingData);
-                
-                // Chiamata al backend per creare prenotazione
-                const bookingResult = await this.makeCompleteBookingCall(bookingData);
-                console.log("🎯 Risultato complete_booking:", bookingResult);
-
-                if (!bookingResult.booking_id || !bookingResult.total_price || !bookingResult.public_token) {
-                    console.warn("⚠️ Alcuni dati essenziali mancanti:", bookingResult);
-                }
-
-                // Processa pagamento
-                await this.processPayment(
-                    bookingData.user_email, 
-                    bookingResult.total_price,  // 8880 (già in centesimi)
-                    bookingResult.booking_id,   // 161
-                    bookingResult.public_token  // cde87b8a-ed9e-4212-9c96-6b0702da3dd4
+            // ✅ Usa il public_token dalla risposta del backend
+            await this.processPayment(
+                bookingData.user_email, 
+                bookingResult.total_price,  // 8880 (già in centesimi)
+                bookingResult.booking_id,   // 161
+                bookingResult.public_token  // cde87b8a-ed9e-4212-9c96-6b0702da3dd4
                 );
-            } catch (error) {
-                console.error("❌ Errore durante la prenotazione:", error);
-                Utils.showError(`Errore: ${error.message}`);
-                DOM.nextBtn.disabled = false;
-                DOM.nextBtn.textContent = "Prenota e paga";
-            }
-        } else {
-            console.warn("⚠️ validateBooking() ha bloccato la submit");
+        } catch (error) {
+            console.error("❌ Errore durante la prenotazione:", error);
+            Utils.showError(`Errore: ${error.message}`);
+            DOM.nextBtn.disabled = false;
+            DOM.nextBtn.textContent = "Prenota e paga";
         }
-    },
+    }
+},
 
     prepareBookingData() {
-        const data = {
-            user_name: DOM.nameInput.value.trim(),
-            user_email: DOM.emailInput.value.trim(), 
-            user_phone: DOM.phoneInput?.value.trim() || "",
-            service_id: state.currentService.id,
-            selected_date: Utils.formatDateISO(state.selectedDate),
-            selected_hour: Utils.createTimestamp(state.selectedDate, state.selectedHour),
-            num_people: parseInt(DOM.numInput.value) || 1,
-            booking_extra_id: this.getSelectedExtraId(),
-        };
-        console.log("📋 prepareBookingData:", data);
-        return data;
+      return {
+        user_name: DOM.nameInput.value.trim(),
+        user_email: DOM.emailInput.value.trim(), 
+        user_phone: DOM.phoneInput?.value.trim() || "",
+        service_id: state.currentService.id,
+        selected_date: Utils.formatDateISO(state.selectedDate),
+        selected_hour: Utils.createTimestamp(state.selectedDate, state.selectedHour),
+        num_people: parseInt(DOM.numInput.value) || 1,
+        booking_extra_id: this.getSelectedExtraId(),
+    };
     },
 
-    getSelectedExtraId() {
-        const extraCheckbox = DOM.extrasContainer?.querySelector('input[type="checkbox"]');
-        const hasExtra = extraCheckbox?.checked && state.currentService._extra_of_service?.length > 0;
-        
-        const extraId = hasExtra ? state.currentService._extra_of_service[0].id : null;
-        console.log("🔹 getSelectedExtraId:", extraId);
-        return extraId;
-    },
-
+getSelectedExtraId() {
+    const extraCheckbox = DOM.extrasContainer?.querySelector('input[type="checkbox"]');
+    const hasExtra = extraCheckbox?.checked && state.currentService._extra_of_service?.length > 0;
+    
+    if (hasExtra) {
+        return state.currentService._extra_of_service[0].id;
+    }
+    return null;  // o 0 se preferisci
+},
     async makeCompleteBookingCall(bookingData) {
         console.log("🚀 Invio dati prenotazione completi:", bookingData);
 
@@ -1948,40 +1924,38 @@ const BookingManager = {
             body: JSON.stringify(bookingData)
         });
 
-        console.log("✅ Risposta API complete_booking:", response);
+        console.log("✅ Risposta API completa:", response);
 
         if (!response) {
             throw new Error("Risposta API non valida");
         }
 
         if (!response.booking_id) {
-            console.warn("⚠️ booking_id non presente, uso fallback");
+            console.warn("⚠️ booking_id non presente nella risposta, provo a recuperarlo...");
+
             const bookingId = await this.getLastBookingIdFallback(bookingData.user_email);
             return { ...response, booking_id: bookingId };
         }
 
-        console.log("✅ booking_id ottenuto direttamente:", response.booking_id);
+        console.log("✅ ID Prenotazione ottenuto direttamente:", response.booking_id);
         return response;
     },
 
     async getLastBookingIdFallback(userEmail) {
-        console.log("🔍 getLastBookingIdFallback per email:", userEmail);
         try {
             const bookings = await API.request(`/booking?user_email=${encodeURIComponent(userEmail)}`);
-            console.log("📑 Bookings ricevuti:", bookings);
 
             if (bookings && bookings.length > 0) {
                 const lastBooking = bookings.reduce((latest, booking) => {
                     return (!latest || booking.created_at > latest.created_at) ? booking : latest;
                 }, null);
 
-                console.log("🎯 Ultima prenotazione trovata:", lastBooking);
                 return lastBooking.id;
             }
 
             throw new Error("Nessuna prenotazione trovata");
         } catch (error) {
-            console.error("❌ Errore nel recupero ID prenotazione:", error);
+            console.error("Errore nel recupero ID prenotazione:", error);
             throw new Error("Prenotazione creata ma impossibile ottenere l'ID per il pagamento");
         }
     },
@@ -2015,8 +1989,26 @@ const BookingManager = {
         return true;
     },
 
+    calculateFinalPrice(numPeople) {
+        const { totalPrice } = PricingManager.calculatePricing(numPeople);
+
+        let extraId = 0;
+        const checkbox = DOM.extrasContainer?.querySelector("input[type='checkbox']");
+        if (checkbox?.checked && state.currentService._extra_of_service?.length > 0) {
+            extraId = state.currentService._extra_of_service[0].id;
+        }
+
+        return { totalPrice, extraId };
+    },
+
     async processPayment(userEmail, totalAmountInCents, bookingId) {
-        console.log("💳 processPayment chiamato con:", { userEmail, totalAmountInCents, bookingId });
+        console.log("💳 Creazione sessione Stripe...");
+        console.log("📊 Dati inviati:", {
+            email: userEmail,
+            total_amount: totalAmountInCents,
+            booking_id: bookingId
+        });
+
         try {
             const stripeData = await API.createStripeCheckout(
                 userEmail,
@@ -2024,22 +2016,29 @@ const BookingManager = {
                 bookingId
             );
 
-            console.log("✅ stripeData ricevuto:", stripeData);
+            console.log("✅ Risposta Stripe ricevuta:", stripeData);
 
             if (stripeData.redirect_url) {
-                console.log("🔄 Redirecting a Stripe:", stripeData.redirect_url);
+                console.log("🔄 Reindirizzamento a Stripe:", stripeData.redirect_url);
                 window.location.href = stripeData.redirect_url;
             } else {
-                console.error("❌ stripeData senza redirect_url:", stripeData);
+                console.error("❌ Risposta completa Stripe:", JSON.stringify(stripeData, null, 2));
                 throw new Error("URL di redirect Stripe non ricevuto");
             }
         } catch (error) {
             console.error("❌ Errore nel processo di pagamento:", error);
+
+            if (error.message.includes('Unable to locate var')) {
+                throw new Error(
+                    'Configurazione pagamento non completata. ' +
+                    'La prenotazione è stata salvata (ID: ' + bookingId + '). ' +
+                    'Contatta il supporto per completare il pagamento.'
+                );
+            }
             throw error;
         }
     }
 };
-
 
 // SERVICE LOADER
 const ServiceLoader = {
