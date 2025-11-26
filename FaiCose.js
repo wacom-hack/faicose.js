@@ -1617,23 +1617,25 @@ const ExtrasManager = {
 // PRICING MANAGER
 const PricingManager = {
     update() {
-        if (!state.currentService) return;
+    if (!state.currentService) return;
 
-        const numPeople = Math.max(1, parseInt(DOM.numInput.value) || 1);
-        const availableSpots = this.getActualAvailableSpots();
-        
-        // CORREZIONE QUI: calculatePricing restituisce 'unitPrice', non 'basePrice'
-        const { unitPrice, extraCost, totalPrice } = this.calculatePricing(numPeople);
+    const numPeople = Math.max(1, parseInt(DOM.numInput.value) || 1);
+    const availableSpots = this.getActualAvailableSpots();
+    
+    // CORREZIONE QUI:
+    // Prima c'era: const { basePrice, ... }
+    // Adesso deve essere: const { unitPrice, ... } perché calculatePricing restituisce unitPrice
+    const { unitPrice, extraCost, totalPrice } = this.calculatePricing(numPeople);
 
-        // Ora passiamo 'unitPrice' (che contiene il valore corretto) alle funzioni di visualizzazione
-        this.updatePeopleText(numPeople, unitPrice);
-        this.updateExtraRecap(extraCost);
-        this.updateTotalPrice(numPeople, unitPrice, totalPrice);
-        
-        this.updateCapacityNotice(numPeople, availableSpots);
-        this.updateNextButtonState(numPeople, availableSpots);
-        this.updateInputMaxLimit(availableSpots);
-    },
+    // Aggiorniamo le chiamate usando la variabile corretta 'unitPrice'
+    this.updatePeopleText(numPeople, unitPrice);
+    this.updateExtraRecap(extraCost);
+    this.updateTotalPrice(numPeople, unitPrice, totalPrice);
+    
+    this.updateCapacityNotice(numPeople, availableSpots);
+    this.updateNextButtonState(numPeople, availableSpots);
+    this.updateInputMaxLimit(availableSpots);
+},
 
     findSelectedSlot() {
         if (!state.currentService || !state.selectedDate || state.selectedHour === null) {
