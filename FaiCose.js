@@ -1401,36 +1401,27 @@ isArtisanBusyInHour(slots, hour) {
         const checkStart = hour;
         const checkEnd = hour + durationHours;
 
-        // console.log(`🔍 Verifica conflitto per orario ${hour}:00 - ${checkEnd}:00`);
-
         const hasConflict = slots.some(slot => {
-            // --- 🔥 MODIFICA FONDAMENTALE 🔥 ---
-            // Se lo slot occupato appartiene allo STESSO servizio che l'utente sta guardando,
-            // NON è un conflitto di artigiano. È solo una questione di capienza (gestita altrove).
+            // --- 🔥 QUESTA PARTE È QUELLA CHE TI MANCA 🔥 ---
+            // Se lo slot occupato è dello STESSO servizio che sto guardando (ID 86), IGNORALO.
             if (slot.service_id === state.currentService.id) {
-                // console.log(`ℹ️ Slot ${slot.id} ignorato perché appartiene al servizio corrente.`);
-                return false;
+                return false; // Non è un conflitto, è solo capacity (gestita dopo)
             }
-            // -----------------------------------
+            // ------------------------------------------------
 
             if (!slot.start_time || !slot.end_time) return false;
 
-            // Converti timestamp in ore (0-23)
-            // Gestisce sia millisecondi (13 cifre) che secondi (10 cifre)
+            // (Resto della logica temporale...)
             const slotStartDate = new Date(slot.start_time > 10000000000 ? slot.start_time : slot.start_time * 1000);
             const slotEndDate = new Date(slot.end_time > 10000000000 ? slot.end_time : slot.end_time * 1000);
 
             const slotStartHour = slotStartDate.getHours() + (slotStartDate.getMinutes() / 60);
             const slotEndHour = slotEndDate.getHours() + (slotEndDate.getMinutes() / 60);
 
-            // Logica di sovrapposizione temporale
-            // Un intervallo A (startA-endA) si sovrappone a B (startB-endB) se:
-            // startA < endB AND endA > startB
             const isOverlapping = checkStart < slotEndHour && checkEnd > slotStartHour;
 
             if (isOverlapping) {
-                console.log(`🚫 CONFLITTO TROVATO con altro servizio (ID: ${slot.service_id}):`, 
-                            `${slotStartHour}:00 - ${slotEndHour}:00`);
+                console.log(`🚫 CONFLITTO TROVATO con altro servizio (ID: ${slot.service_id})`);
             }
 
             return isOverlapping;
