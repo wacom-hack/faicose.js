@@ -1128,62 +1128,77 @@ const CalendarManager = {
     },
     
 jumpToFirstAvailableMonth() {
-        const rules = state.currentService._all_availability_rules;
+    console.log("🚀 jumpToFirstAvailableMonth: Inizio scansione...");
+    const rules = state.currentService._all_availability_rules;
 
-        // Se non ci sono regole, rimaniamo su oggi
-        if (!rules || rules.length === 0) return;
+    if (!rules || rules.length === 0) {
+        console.log("⚠️ Nessuna regola disponibile. Rimango su oggi.");
+        return;
+    }
 
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+    // Data di oggi a mezzanotte
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    console.log(`📅 Oggi è: ${today.toLocaleDateString()}`);
 
-        // 1. FILTRO: Tieni solo le regole che:
-        //    a) Non sono finite nel passato
-        //    b) NON SONO VUOTE (hanno daily_schedules validi)
-        const validFutureRules = rules.filter(rule => {
-            // Controllo fine validità
-            const endDate = rule.end_date ? new Date(rule.end_date) : null;
-            if (endDate) {
-                endDate.setHours(23, 59, 59, 999);
-                if (endDate < today) return false; // Scaduta
-            }
+    // 1. Filtra regole valide (Future o Presenti + NON Vuote)
+    const validRules = rules.filter(rule => {
+        // Scarta regole vuote
+        if (this.isRuleEmpty(rule)) return false;
 
-            // Controllo se è una regola "bloccante" (vuota)
-            if (this.isRuleEmpty(rule)) return false; 
-
-            return true;
-        });
-
-        if (validFutureRules.length === 0) {
-            console.log("⚠️ Nessuna regola futura valida trovata. Rimango su oggi.");
-            return;
+        // Controlla fine validità
+        if (rule.end_date) {
+            const endDate = new Date(rule.end_date);
+            endDate.setHours(23, 59, 59, 999);
+            if (endDate < today) return false; // Già scaduta
         }
+        
+        return true;
+    });
 
-        // 2. ORDINAMENTO: Dalla data di inizio più vicina
-        validFutureRules.sort((a, b) => {
-            const startA = a.start_date ? new Date(a.start_date) : new Date(0);
-            const startB = b.start_date ? new Date(b.start_date) : new Date(0);
-            return startA - startB;
-        });
+    if (validRules.length === 0) {
+        console.log("⚠️ Nessuna regola valida trovata per il futuro.");
+        return;
+    }
 
-        // 3. SELEZIONE E SALTO
-        const firstRule = validFutureRules[0];
-        const firstDate = firstRule.start_date ? new Date(firstRule.start_date) : today;
+    // 2. Ordina per data di inizio
+    validRules.sort((a, b) => {
+        const startA = a.start_date ? new Date(a.start_date) : new Date(0);
+        const startB = b.start_date ? new Date(b.start_date) : new Date(0);
+        return startA - startB;
+    });
 
-        // Se la regola inizia nel futuro (mese successivo o oltre)
-        if (firstDate > today) {
-            // Verifica che non siamo già nello stesso mese
-            const isSameMonth = firstDate.getMonth() === today.getMonth() && 
-                                firstDate.getFullYear() === today.getFullYear();
+    console.log("✅ Regole valide trovate (ordinate):", validRules.map(r => `${r.id} (${r.start_date})`));
 
-            if (!isSameMonth) {
-                console.log(`🚀 Salto al primo mese disponibile: ${firstDate.toLocaleString('it-IT', { month: 'long', year: 'numeric' })}`);
-                
-                // Imposta la data corrente al primo giorno del mese target
-                state.currentDate = new Date(firstDate);
-                state.currentDate.setDate(1); // Importante per evitare bug fine mese
-            }
-        }
-    },
+    // 3. Prendi la prima regola
+    const firstRule = validRules[0];
+    let targetDate = firstRule.start_date ? new Date(firstRule.start_date) : new Date();
+    
+    // Se la regola è iniziata nel passato (es. iniziata 1 Nov, oggi è 26 Nov), 
+    // il "primo giorno disponibile" è OGGI, non l'inizio della regola.
+    if (targetDate < today) {
+        targetDate = new Date(today);
+    }
+
+    // 4. Salta al mese della regola se necessario
+    // Confrontiamo Anno e Mese
+    const currentMonth = today.getMonth();
+    const currentYear = today.getFullYear();
+    
+    const targetMonth = targetDate.getMonth();
+    const targetYear = targetDate.getFullYear();
+
+    // Se il mese o l'anno sono futuri
+    if (targetYear > currentYear || (targetYear === currentYear && targetMonth > currentMonth)) {
+        console.log(`🚀 SALTO TEMPORALE! Da ${today.toLocaleDateString()} a ${targetDate.toLocaleDateString()}`);
+        
+        // Aggiorna lo stato
+        state.currentDate = new Date(targetDate);
+        state.currentDate.setDate(1); // Mettiamo 1° del mese per sicurezza rendering
+    } else {
+        console.log("ℹ️ La prima disponibilità è nel mese corrente. Nessun salto necessario.");
+    }
+},
 };
 
 
