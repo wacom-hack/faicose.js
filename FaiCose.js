@@ -280,104 +280,61 @@ const API = {
         return service;
     },
 
-    async getServiceBySlug(slug) {
+async getServiceBySlug(slug) {
         const cacheKey = `service_${slug}`;
         const cached = sessionStorage.getItem(cacheKey);
+        
         if (cached) {
             const data = JSON.parse(cached);
+            // Controllo validità cache (1 ora)
             if (Date.now() - data._cached < 3600000) {
-                console.log('✅ Servizio dalla cache');
-                return data.service;
+                console.log('✅ Servizio caricato dalla CACHE');
+                
+                // 🔥 FIX CRITICO: Assicuriamoci che _all_availability_rules esista anche nella cache
+                // Se la cache è vecchia o corrotta e manca questo campo, invalidiamola
+                if (data.service._all_availability_rules) {
+                    return data.service;
+                } else {
+                    console.warn("⚠️ Cache trovata ma incompleta (mancano regole). Ricarico da API.");
+                }
             }
         }
 
+        console.log("📡 Scarico servizio da API...");
         const service = await this.request(`/services/slug/${slug}`);
 
+        // Recupero dati Artigiano e Regole
         if (service.artisan_id) {
             try {
                 const artisan = await this.request(`/artisan/${service.artisan_id}`);
                 service._artisan = artisan;
+                
+                console.log("👨‍🔧 Artigiano scaricato:", artisan.name);
 
-                console.log("👨‍🔧 Artigiano caricato:", artisan);
-
-                // ⭐⭐ DEBUG COMPLETO: Mostra TUTTE le availability rules
-                console.log("📋 TUTTE le availability rules dell'artigiano:");
-                artisan._artisan_availability_rules_of_artisan.forEach((rule, index) => {
-                    console.log(`=== REGOLA ${index + 1} (ID: ${rule.id}) ===`);
-                    console.log("Start Date:", rule.start_date);
-                    console.log("End Date:", rule.end_date);
-                    console.log("Daily Schedules:", rule.daily_schedules);
-                    console.log("Lunghezza Daily Schedules:", rule.daily_schedules?.length);
-                    console.log("Tipo Daily Schedules:", typeof rule.daily_schedules);
-
-                    // Controllo specifico per array vuoti
-                    if (rule.daily_schedules && rule.daily_schedules.length === 0) {
-                        console.log("🚨 QUESTA REGOLA HA DAILY_SCHEDULES VUOTO!");
-                    }
-                    if (Array.isArray(rule.daily_schedules) && rule.daily_schedules.length === 1 &&
-                        Array.isArray(rule.daily_schedules[0]) && rule.daily_schedules[0].length === 0) {
-                        console.log("🚨 QUESTA REGOLA HA DAILY_SCHEDULES [[]] (array di array vuoto)!");
-                    }
-                    console.log("=== FINE REGOLA ===");
-                });
-
-                // ⭐⭐ TEST: Quale rule per quale data?
-                const findRuleForDate = (targetDate) => {
-                    return artisan._artisan_availability_rules_of_artisan.find(rule => {
-                        const startDate = rule.start_date ? new Date(rule.start_date) : null;
-                        const endDate = rule.end_date ? new Date(rule.end_date) : null;
-
-                        if (startDate && endDate) {
-                            return targetDate >= startDate && targetDate <= endDate;
-                        } else if (startDate) {
-                            return targetDate >= startDate;
-                        } else if (endDate) {
-                            return targetDate <= endDate;
-                        }
-                        return true;
-                    });
-                };
-
-                const testDates = [
-                    new Date('2025-11-12'), // Oggi
-                    new Date('2025-12-01'), // Inizio ID 2
-                    new Date('2025-12-15'), // Fine ID 2  
-                    new Date('2025-12-17'), // Inizio ID 3
-                    new Date('2025-12-25'), // Durante ID 3
-                    new Date('2026-01-15')  // Durante ID 3
-                ];
-
-                console.log("🔍 TEST: Quale rule per quale data?");
-                testDates.forEach(testDate => {
-                    const rule = findRuleForDate(testDate);
-                    console.log(`📅 ${Utils.formatDateDDMMYYYY(testDate)} → Rule ID: ${rule?.id || 'Nessuna'}`);
-                });
-
-                // ⭐⭐ NUOVA LOGICA: Non scegliere una rule fissa, ma salva tutte le rules
+                // Popolazione Regole Disponibilità
                 if (artisan._artisan_availability_rules_of_artisan?.length > 0) {
-                    console.log("✅ Rules disponibili, verranno scelte dinamicamente per data");
-                    service._availability = null; // Non settare una rule fissa!
-
-                    // Salva TUTTE le rules nel service per usarle dopo dinamicamente
+                    console.log(`✅ Trovate ${artisan._artisan_availability_rules_of_artisan.length} regole di disponibilità.`);
                     service._all_availability_rules = artisan._artisan_availability_rules_of_artisan;
-                    console.log("📦 Tutte le rules salvate per selezione dinamica:", service._all_availability_rules.map(r => r.id));
                 } else {
-                    console.log("❌ Nessuna regola di disponibilità per l'artigiano");
-                    service._availability = null;
+                    console.log("❌ Nessuna regola trovata per l'artigiano.");
                     service._all_availability_rules = [];
                 }
 
             } catch (error) {
                 console.error("❌ Errore nel caricamento artigiano:", error);
-                service._availability = null;
                 service._all_availability_rules = [];
             }
         }
 
-        sessionStorage.setItem(cacheKey, JSON.stringify({
-            service,
-            _cached: Date.now()
-        }));
+        // Salvataggio in Cache (ORA include _all_availability_rules perché l'abbiamo appena aggiunto)
+        try {
+            sessionStorage.setItem(cacheKey, JSON.stringify({
+                service,
+                _cached: Date.now()
+            }));
+        } catch (e) {
+            console.warn("Impossibile salvare in cache (quota superata?)", e);
+        }
 
         return service;
     },
