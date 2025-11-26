@@ -1403,13 +1403,28 @@ isArtisanBusyInHour(slots, hour) {
         btn.dataset.hour = String(hour);
         const serviceDurationHours = state.currentService.duration_minutes / 60;
         const endHour = hour + serviceDurationHours;
+        
         btn.classList.add('button-3', 'w-button');
         btn.setAttribute('type', 'button');
 
+        // 1. TROVA LO SLOT SPECIFICO PER QUESTO ORARIO E SERVIZIO
+        // Questo slot contiene il 'booked_count' specifico per QUESTO corso
         const slot = this.findSlotForHour(slots, hour);
-        const availableSpots = slot ? (slot.capacity - slot.booked_count) : state.currentService.max_capacity_per_slot;
+        
+        // 2. CALCOLO POSTI (Logica Semplificata)
+        // Se lo slot esiste, usiamo la sua capacità residua.
+        // Se lo slot non esiste ancora (nessuna prenotazione), tutti i posti sono liberi.
+        let availableSpots = state.currentService.max_capacity_per_slot;
+        
+        if (slot) {
+            // Assicuriamoci di trattare i numeri come numeri
+            const capacity = parseInt(slot.capacity);
+            const booked = parseInt(slot.booked_count || 0);
+            availableSpots = capacity - booked;
+        }
 
-        // 🔥 PRIORITÀ ASSOLUTA: Artigiano occupato
+        // 3. LOGICA DI STATO (Priorità: Artigiano Occupato > Posti Esauriti > Libero)
+        // isArtisanBusy è true SOLO se c'è un conflitto con UN ALTRO servizio (grazie al fix di prima)
         const isFull = isArtisanBusy || availableSpots <= 0;
 
         let statusText, statusTitle, buttonStyle = '';
@@ -1423,6 +1438,7 @@ isArtisanBusyInHour(slots, hour) {
             statusTitle = 'Tutti i posti per questo orario sono occupati';
             buttonStyle = 'style="opacity: 0.5;"';
         } else {
+            // Qui mostriamo il numero corretto
             statusText = `${availableSpots} posti liberi`;
             statusTitle = '';
         }
@@ -1434,7 +1450,7 @@ isArtisanBusyInHour(slots, hour) {
         <div style="font-size: 12px; margin-top: 4px;">${statusText}</div>
     `;
 
-        if (buttonStyle) {
+if (buttonStyle) {
             btn.setAttribute('style', buttonStyle.replace(/style="|"/g, ''));
         }
 
