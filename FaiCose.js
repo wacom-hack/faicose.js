@@ -1470,8 +1470,14 @@ if (buttonStyle) {
     },
 
     findSlotForHour(slots, hour) {
-        const startTime = Utils.createTimestamp(state.selectedDate, hour) / 1000;
-        return slots.find(s => s.start_time == startTime) || null;
+        const targetTimestamp = Utils.createTimestamp(state.selectedDate, hour);
+        
+        return slots.find(s => {
+            if (!s.start_time) return false;
+            const dbTimestamp = s.start_time < 10000000000 ? s.start_time * 1000 : s.start_time;
+
+            return dbTimestamp === targetTimestamp;
+        }) || null;
     },
 
     selectHour(hour) {
