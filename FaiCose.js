@@ -93,6 +93,16 @@ const Utils = {
         const day = String(date.getDate()).padStart(2, '0');
         return `${year}-${month}-${day}`;
     },
+    formatCurrency(amountInCents) {
+        if (amountInCents === undefined || amountInCents === null) return '€ 0,00';
+
+        const amount = amountInCents / 100;
+        
+        return new Intl.NumberFormat('it-IT', { 
+            style: 'currency', 
+            currency: 'EUR' 
+        }).format(amount);
+    },
 
 
     formatDateDDMMYYYY(date) {
