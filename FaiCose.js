@@ -1621,11 +1621,15 @@ const PricingManager = {
 
         const numPeople = Math.max(1, parseInt(DOM.numInput.value) || 1);
         const availableSpots = this.getActualAvailableSpots();
-        const { basePrice, extraCost, totalPrice } = this.calculatePricing(numPeople);
+        
+        // CORREZIONE QUI: calculatePricing restituisce 'unitPrice', non 'basePrice'
+        const { unitPrice, extraCost, totalPrice } = this.calculatePricing(numPeople);
 
-        this.updatePeopleText(numPeople, basePrice);
+        // Ora passiamo 'unitPrice' (che contiene il valore corretto) alle funzioni di visualizzazione
+        this.updatePeopleText(numPeople, unitPrice);
         this.updateExtraRecap(extraCost);
-        this.updateTotalPrice(numPeople, basePrice, totalPrice);
+        this.updateTotalPrice(numPeople, unitPrice, totalPrice);
+        
         this.updateCapacityNotice(numPeople, availableSpots);
         this.updateNextButtonState(numPeople, availableSpots);
         this.updateInputMaxLimit(availableSpots);
@@ -1662,14 +1666,12 @@ const PricingManager = {
         const slot = this.findSelectedSlot();
 
         if (slot) {
-
             const available = slot.capacity - (slot.booked_count || 0);
             return available;
         }
 
         return state.currentService.max_capacity_per_slot;
     },
-
 
     updateInputMaxLimit(availableSpots) {
         if (DOM.numInput) {
@@ -1725,45 +1727,48 @@ const PricingManager = {
             notice.style.color = "#22c55e";
         }
     },
-calculatePricing(numPeople) {
-    // 1. Prezzo base di fallback (con parsing sicuro)
-    let finalUnitPrice = parseFloat(state.currentService.base_price) || 0;
 
-    // 2. Cerca la fascia di prezzo corretta
-    if (state.currentService._service_prices?.length > 0) {
-        const matched = state.currentService._service_prices.find(p =>
-            numPeople >= p.min_people && numPeople <= p.max_people
-        );
-        
-        if (matched) {
-            // CORREZIONE QUI: Usiamo 'retail_price' invece di 'price'
-            if (matched.retail_price !== undefined && matched.retail_price !== null) {
-                finalUnitPrice = parseFloat(matched.retail_price);
-            } else {
-                console.warn("⚠️ Fascia trovata, ma 'retail_price' è mancante:", matched);
+    calculatePricing(numPeople) {
+        // 1. Prezzo base di fallback (con parsing sicuro)
+        let finalUnitPrice = parseFloat(state.currentService.base_price) || 0;
+
+        // 2. Cerca la fascia di prezzo corretta
+        if (state.currentService._service_prices?.length > 0) {
+            const matched = state.currentService._service_prices.find(p =>
+                numPeople >= p.min_people && numPeople <= p.max_people
+            );
+            
+            if (matched) {
+                // Gestione robusta: cerca 'retail_price'
+                if (matched.retail_price !== undefined && matched.retail_price !== null) {
+                    finalUnitPrice = parseFloat(matched.retail_price);
+                } else {
+                    console.warn("⚠️ Fascia trovata, ma 'retail_price' è mancante:", matched);
+                }
             }
         }
-    }
 
-    // 3. Calcolo Extra
-    let extraCost = 0;
-    const checkbox = DOM.extrasContainer?.querySelector("input[type='checkbox']");
-    if (checkbox?.checked && state.currentService._extra_of_service?.length > 0) {
-        const extra = state.currentService._extra_of_service[0];
-        const extraPrice = parseFloat(extra.price) || 0;
-        extraCost = extra.per_person ? extraPrice * numPeople : extraPrice;
-    }
+        // 3. Calcolo Extra
+        let extraCost = 0;
+        const checkbox = DOM.extrasContainer?.querySelector("input[type='checkbox']");
+        if (checkbox?.checked && state.currentService._extra_of_service?.length > 0) {
+            const extra = state.currentService._extra_of_service[0];
+            const extraPrice = parseFloat(extra.price) || 0;
+            extraCost = extra.per_person ? extraPrice * numPeople : extraPrice;
+        }
 
-    // 4. Totale
-    const totalPrice = (finalUnitPrice * numPeople) + extraCost;
+        // 4. Totale
+        const totalPrice = (finalUnitPrice * numPeople) + extraCost;
 
-    return { unitPrice: finalUnitPrice, extraCost, totalPrice };
-},
+        // Restituiamo 'unitPrice' per coerenza
+        return { unitPrice: finalUnitPrice, extraCost, totalPrice };
+    },
 
     updatePeopleText(numPeople, costPerPerson) {
         const personLabel = numPeople === 1 ? "persona" : "persone";
 
         if (DOM.peopleText) {
+            // Qui costPerPerson sarà corretto (non undefined)
             DOM.peopleText.textContent = `${numPeople} ${personLabel} × ${costPerPerson.toFixed(2)}€ a testa`;
         }
 
