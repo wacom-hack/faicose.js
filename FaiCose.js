@@ -1544,7 +1544,7 @@ selectHour(hour) {
     // 5. Abilita tasto next
     DOM.nextBtn.disabled = false;
     DOM.nextBtn.classList.remove('disabled');
-}
+},
 
 
     disableNextButton() {
