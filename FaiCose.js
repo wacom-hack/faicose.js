@@ -1497,7 +1497,7 @@ findSlotForHour(slots, hour) {
 selectHour(hour) {
     state.selectedHour = hour;
 
-    // 1. Gestione estetica bottoni (Selezione)
+    // 1. Gestione estetica bottoni
     const hourButtons = DOM.hoursGrid.querySelectorAll('button[data-hour]');
     hourButtons.forEach(btn => {
         btn.classList.remove('selected');
@@ -1506,14 +1506,20 @@ selectHour(hour) {
         }
     });
 
-    // 2. Recupero dati slot per contare gli iscritti attuali
-    const slot = this.findSlotForHour(state.selectedDate, hour);
-    const currentBooked = slot ? (slot.booked_count || 0) : 0;
+    // --- 🛠️ FIX RECUPERO DATI ---
+    // 1. Recuperiamo la lista degli slot dalla cache (la stessa usata per generare i bottoni)
+    const slots = CacheManager.get(state.currentService.id, state.selectedDate);
+    
+    // 2. Ora passiamo la LISTA (slots) alla funzione di ricerca, non la data
+    const slot = this.findSlotForHour(slots, hour);
+    
+    // 3. Leggiamo il numero di iscritti
+    const currentBooked = slot ? (parseInt(slot.booked_count) || 0) : 0;
+    // ----------------------------
 
-    // 3. Gestione Avviso "Minimo 3 Persone"
+    // 4. Gestione Avviso "Minimo 3 Persone"
     let noticeDiv = document.getElementById("min-pax-notice");
     
-    // Se il div non esiste, crealo al volo
     if (!noticeDiv) {
         noticeDiv = document.createElement("div");
         noticeDiv.id = "min-pax-notice";
@@ -1521,7 +1527,6 @@ selectHour(hour) {
         DOM.hoursGrid.insertAdjacentElement('afterend', noticeDiv);
     }
 
-    // Logica visualizzazione: Se iscritti < 3 mostra avviso, altrimenti nascondi
     if (currentBooked < 3) {
         noticeDiv.style.display = "block";
         noticeDiv.innerHTML = `
@@ -1536,10 +1541,10 @@ selectHour(hour) {
         noticeDiv.style.display = "none";
     }
 
-    // 4. Abilita tasto next
+    // 5. Abilita tasto next
     DOM.nextBtn.disabled = false;
     DOM.nextBtn.classList.remove('disabled');
-},
+}
 
 
     disableNextButton() {
