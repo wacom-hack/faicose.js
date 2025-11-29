@@ -1480,22 +1480,52 @@ if (buttonStyle) {
         }) || null;
     },
 
-    selectHour(hour) {
-        state.selectedHour = hour;
+selectHour(hour) {
+    state.selectedHour = hour;
 
-        const hourButtons = DOM.hoursGrid.querySelectorAll('button[data-hour]');
+    // 1. Gestione estetica bottoni (Selezione)
+    const hourButtons = DOM.hoursGrid.querySelectorAll('button[data-hour]');
+    hourButtons.forEach(btn => {
+        btn.classList.remove('selected');
+        if (btn.dataset.hour === String(hour)) {
+            btn.classList.add('selected');
+        }
+    });
 
-        hourButtons.forEach(btn => {
-            btn.classList.remove('selected');
+    // 2. Recupero dati slot per contare gli iscritti attuali
+    const slot = this.findSlotForHour(state.selectedDate, hour);
+    const currentBooked = slot ? (slot.booked_count || 0) : 0;
 
-            if (btn.dataset.hour === String(hour)) {
-                btn.classList.add('selected');
-            }
-        });
+    // 3. Gestione Avviso "Minimo 3 Persone"
+    let noticeDiv = document.getElementById("min-pax-notice");
+    
+    // Se il div non esiste, crealo al volo
+    if (!noticeDiv) {
+        noticeDiv = document.createElement("div");
+        noticeDiv.id = "min-pax-notice";
+        noticeDiv.style.cssText = "background: #fff3cd; color: #856404; padding: 12px; border-radius: 6px; margin-top: 12px; font-size: 0.9em; border: 1px solid #ffeeba; line-height: 1.5;";
+        DOM.hoursGrid.insertAdjacentElement('afterend', noticeDiv);
+    }
 
-        DOM.nextBtn.disabled = false;
-        DOM.nextBtn.classList.remove('disabled');
-    },
+    // Logica visualizzazione: Se iscritti < 3 mostra avviso, altrimenti nascondi
+    if (currentBooked < 3) {
+        noticeDiv.style.display = "block";
+        noticeDiv.innerHTML = `
+            <strong>⚠️ In attesa di conferma:</strong><br>
+            Attualmente ci sono <strong>${currentBooked} iscritti</strong>. L'attività parte con un minimo di 3 partecipanti.<br>
+            <span style="font-size: 0.9em; opacity: 0.9;">
+            Se prenoti ora, chiederemo solo una pre-autorizzazione (nessun addebito) finché il gruppo non si forma.
+            Oppure aggiungi l'extra <strong>"Privatizzazione"</strong> per confermare subito!
+            </span>
+        `;
+    } else {
+        noticeDiv.style.display = "none";
+    }
+
+    // 4. Abilita tasto next
+    DOM.nextBtn.disabled = false;
+    DOM.nextBtn.classList.remove('disabled');
+},
 
 
     disableNextButton() {
