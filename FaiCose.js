@@ -1387,16 +1387,24 @@ isArtisanBusyInHour(slots, hour) {
         return hasConflict;
     },
 
-    async loadSlots() {
-        const cached = CacheManager.get(state.currentService.id, state.selectedDate);
-        if (cached) {
-            return cached;
-        }
+async loadSlots() {
+    // Prima controlla la cache
+    const cached = CacheManager.get(state.currentService.id, state.selectedDate);
+    if (cached) return cached;
 
+    try {
         const slots = await API.getSlots(state.currentService.id, state.selectedDate);
-        CacheManager.set(state.currentService.id, state.selectedDate, slots);
-        return slots;
-    },
+        
+        // 🛡️ PROTEZIONE: Se l'API restituisce null, usiamo un array vuoto []
+        const safeSlots = Array.isArray(slots) ? slots : [];
+        
+        CacheManager.set(state.currentService.id, state.selectedDate, safeSlots);
+        return safeSlots;
+    } catch (error) {
+        console.error("❌ Errore API loadSlots, uso array vuoto per non bloccare:", error);
+        return []; // In caso di errore, permetti all'utente di provare a prenotare
+    }
+},
 
     createHourButton(hour, slots, isArtisanBusy = false) {
         const btn = document.createElement('button');
@@ -1469,16 +1477,22 @@ if (buttonStyle) {
         return btn;
     },
 
-    findSlotForHour(slots, hour) {
-        const targetTimestamp = Utils.createTimestamp(state.selectedDate, hour);
-        
-        return slots.find(s => {
-            if (!s.start_time) return false;
-            const dbTimestamp = s.start_time < 10000000000 ? s.start_time * 1000 : s.start_time;
+findSlotForHour(slots, hour) {
+    // 🛡️ PROTEZIONE: Se slots è null, undefined o non è un array, ritorna null (nessuno slot occupato)
+    if (!slots || !Array.isArray(slots)) {
+        // console.log("⚠️ findSlotForHour: Nessuno slot o formato non valido, considero tutto libero.");
+        return null;
+    }
 
-            return dbTimestamp === targetTimestamp;
-        }) || null;
-    },
+    const targetTimestamp = Utils.createTimestamp(state.selectedDate, hour);
+    
+    // Ora siamo sicuri che .find esiste
+    return slots.find(s => {
+        if (!s.start_time) return false;
+        const slotTime = (s.start_time < 10000000000) ? s.start_time * 1000 : s.start_time;
+        return slotTime === targetTimestamp;
+    }) || null;
+},
 
 selectHour(hour) {
     state.selectedHour = hour;
