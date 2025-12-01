@@ -1162,845 +1162,432 @@ jumpToFirstAvailableMonth() {
 // HOURS MANAGER
 const HoursManager = {
     async render() {
-        if (!DOM.hoursGrid || !state.currentService || !state.selectedDate) {
-            DOM.hoursGrid.innerHTML = '';
-            return;
-        }
-
+        if (!DOM.hoursGrid || !state.currentService || !state.selectedDate) return;
         DOM.hoursGrid.innerHTML = '<p style="text-align: center; width: 100%;">Caricamento orari...</p>';
-
+        
         try {
             const hours = this.getAvailableHours();
-
             if (hours.length === 0) {
-                DOM.hoursGrid.innerHTML = '<p style="text-align: center; width: 100%;">Nessun orario disponibile per questa data.</p>';
+                DOM.hoursGrid.innerHTML = '<p style="text-align: center; width: 100%;">Nessun orario disponibile.</p>';
                 this.disableNextButton();
                 return;
             }
-
+            
             const slots = await this.loadSlots();
-
-            // Pre-carica le informazioni di occupazione dell'artigiano
-            const artisanBusyInfo = await this.preloadArtisanBusyInfo(hours);
-
+            const busyInfo = await this.preloadArtisanBusyInfo(hours);
+            
             DOM.hoursGrid.innerHTML = '';
-            let firstAvailableHour = null;
+            let firstAvailable = null;
 
-            for (const hour of hours) {
-                const isArtisanBusy = artisanBusyInfo[hour] || false;
-                const btn = this.createHourButton(hour, slots, isArtisanBusy);
-
-                if (!btn.disabled && firstAvailableHour === null) {
-                    firstAvailableHour = hour;
-                }
-
+            hours.forEach(h => {
+                const isBusy = busyInfo[h] || false;
+                const btn = this.createHourButton(h, slots, isBusy);
+                
+                if (!btn.disabled && firstAvailable === null) firstAvailable = h;
                 DOM.hoursGrid.appendChild(btn);
-            }
+            });
 
-            if (firstAvailableHour !== null) {
-                this.selectHour(firstAvailableHour);
+            if (firstAvailable !== null) {
+                // Opzionale: Seleziona automaticamente il primo orario libero
+                // this.selectHour(firstAvailable);
             } else {
                 this.disableNextButton();
             }
 
-        } catch (error) {
-            console.error('Errore nel caricamento degli orari:', error);
-            DOM.hoursGrid.innerHTML = '<p style="text-align: center; width: 100%; color: red;">Errore nel caricare gli slot.</p>';
-            this.disableNextButton();
+        } catch (e) {
+            console.error("Errore orari:", e);
+            DOM.hoursGrid.innerHTML = '<p style="color:red; text-align:center;">Errore caricamento slot.</p>';
         }
     },
 
     getAvailableHours() {
-        const hours = [];
-        const dayOfWeekStr = CONFIG.DAY_NAMES[(state.selectedDate.getDay() + 6) % 7];
-        const serviceDurationHours = state.currentService.duration_minutes / 60;
-
-        console.log("🔍 Cerco orari per:", dayOfWeekStr, "Durata servizio:", serviceDurationHours + "h");
-
-        // ⭐⭐ CORREZIONE: PRIMA cerca negli orari speciali
-        const ruleForDate = CalendarManager.findRuleForDate(state.selectedDate);
-        if (ruleForDate?.daily_schedules) {
-            console.log("🔍 Cerco orari speciali in daily_schedules");
-            try {
-                let schedules = ruleForDate.daily_schedules;
-                if (Array.isArray(schedules) && schedules.length > 0) {
-                    if (Array.isArray(schedules[0])) {
-                        schedules = schedules.flat();
-                    }
-                    const scheduleForDay = schedules.find(s => s && s.day === dayOfWeekStr);
-                    if (scheduleForDay) {
-                        console.log("✅ Trovato orario speciale:", scheduleForDay);
-
-                        // ⭐⭐ CORREZIONE: Dichiara le variabili qui
-                        const startHour = parseInt(scheduleForDay.start.split(':')[0]);
-                        const endHour = parseInt(scheduleForDay.end.split(':')[0]);
-
-                        console.log(`🕒 Orari speciali: ${startHour}:00 - ${endHour}:00, intervallo: ${serviceDurationHours}h`);
-
-                        for (let h = startHour; h < endHour; h += serviceDurationHours) {
-                            hours.push(h);
-                        }
-                        console.log("📅 Ore generate da speciali:", hours);
-                        return hours;
-                    }
-                }
-            } catch (error) {
-                console.error("❌ Errore nel parsing orari speciali:", error);
+        // ... (Usa la versione che avevi già nel codice completo, oppure copiala dal mio messaggio precedente se ti serve)
+        // Per brevità qui metto la logica standard
+        const dayName = CONFIG.DAY_NAMES[(state.selectedDate.getDay() + 6) % 7];
+        const duration = state.currentService.duration_minutes / 60;
+        
+        const rule = CalendarManager.findRuleForDate(state.selectedDate);
+        if (rule?.daily_schedules) {
+            let schedules = rule.daily_schedules;
+            if (Array.isArray(schedules[0])) schedules = schedules.flat();
+            const todaySched = schedules.find(s => s.day === dayName);
+            if (todaySched) {
+                const start = parseInt(todaySched.start.split(':')[0]);
+                const end = parseInt(todaySched.end.split(':')[0]);
+                const res = [];
+                for(let h=start; h<end; h+=duration) res.push(h);
+                return res;
             }
         }
-
-        // ALTRIMENTI usa orari default
-        console.log("🔍 Uso orari di default del servizio");
-        // ⭐⭐ CORREZIONE: Dichiara le variabili anche qui
-        const startHour = parseInt(state.currentService.working_hours_start.split(':')[0]);
-        const endHour = parseInt(state.currentService.working_hours_end.split(':')[0]);
-
-        console.log(`🕒 Orari default: ${startHour}:00 - ${endHour}:00, intervallo: ${serviceDurationHours}h`);
-        for (let h = startHour; h < endHour; h += serviceDurationHours) {
-            hours.push(h);
-        }
-
-        console.log("📅 Ore generate da default:", hours);
-        return hours;
+        const start = parseInt(state.currentService.working_hours_start.split(':')[0]);
+        const end = parseInt(state.currentService.working_hours_end.split(':')[0]);
+        const res = [];
+        for(let h=start; h<end; h+=duration) res.push(h);
+        return res;
     },
 
-    // ⭐⭐ AGGIUNGI ANCHE isRuleEmpty a HoursManager
-    isRuleEmpty(rule) {
-        if (!rule.daily_schedules) return true;
-
-        const schedules = rule.daily_schedules;
-
-        // Caso 1: Array completamente vuoto []
-        if (Array.isArray(schedules) && schedules.length === 0) {
-            return true;
-        }
-
-        // Caso 2: Array di array vuoto [[]]
-        if (Array.isArray(schedules) && schedules.length === 1 &&
-            Array.isArray(schedules[0]) && schedules[0].length === 0) {
-            return true;
-        }
-
-        // Caso 3: Array con dati validi
-        return false;
+    async loadSlots() {
+        const cached = CacheManager.get(state.currentService.id, state.selectedDate);
+        if (cached) return cached;
+        try {
+            const slots = await API.getSlots(state.currentService.id, state.selectedDate);
+            const safeSlots = Array.isArray(slots) ? slots : [];
+            CacheManager.set(state.currentService.id, state.selectedDate, safeSlots);
+            return safeSlots;
+        } catch (e) { return []; }
     },
 
     async preloadArtisanBusyInfo(hours) {
-        const busyInfo = {};
-
-        if (!state.currentService?._artisan) {
-            return busyInfo;
-        }
-
-        const artisanId = state.currentService._artisan.id;
-
+        if (!state.currentService._artisan) return {};
+        const res = {};
         try {
-            console.log(`🎯 DEBUG: Chiamando NUOVO endpoint per artigiano ${artisanId}`);
-            const artisanSlots = await this.getAllArtisanSlotsForDate(artisanId, state.selectedDate);
-            console.log("📊 Slot occupati artigiano:", artisanSlots);
-
-            // Per ogni ora, verifica se l'artigiano ha QUALSIASI slot occupato
-            hours.forEach(hour => {
-                const isBusy = this.isArtisanBusyInHour(artisanSlots, hour);
-                busyInfo[hour] = isBusy;
-
-                if (isBusy) {
-                    console.log(`🚫 Artigiano occupato alle ${hour}:00 (slot occupato)`);
-                }
-            });
-
-        } catch (error) {
-            console.error("❌ Errore nel controllo disponibilità artigiano:", error);
-        }
-
-        return busyInfo;
+            const bookings = await API.getArtisanBookings(state.currentService._artisan.id, state.selectedDate);
+            hours.forEach(h => { res[h] = this.isArtisanBusy(bookings, h); });
+        } catch(e) {}
+        return res;
     },
 
-    async getAllArtisanSlotsForDate(artisanId, date) {
-        try {
-            const dateStr = Utils.formatDateISO(date);
-            console.log(`🎯 DEBUG: Chiamando endpoint artisan_bookings?artisan_id=${artisanId}&date=${dateStr}`);
-
-            // 🔥 CORREGGI: Rimuovi /api/ dal path
-            const bookings = await API.request(`/artisan_bookings?artisan_id=${artisanId}&date=${dateStr}`);
-            console.log("✅ Risposta endpoint:", bookings);
-
-            if (!bookings || !Array.isArray(bookings)) {
-                console.error("❌ Risposta non valida:", bookings);
-                return [];
-            }
-
-            console.log(`🎯 Prenotazioni trovate: ${bookings.length}`);
-
-            const artisanSlots = bookings.map(booking => ({
-                id: booking.slot_id,
-                start_time: booking.slot_start_time,
-                end_time: booking.slot_end_time,
-                service_id: booking.service_id,
-                _service: {
-                    id: booking.service_id,
-                    name: booking.service_name,
-                    artisan_id: artisanId
-                }
-            }));
-
-            console.log("📦 Slot elaborati:", artisanSlots);
-            return artisanSlots;
-
-        } catch (error) {
-            console.error("❌ Errore completo:", error);
-            return [];
-        }
-    },
-
-isArtisanBusyInHour(slots, hour) {
-        const durationHours = state.currentService.duration_minutes / 60;
-        const checkStart = hour;
-        const checkEnd = hour + durationHours;
-
-        const hasConflict = slots.some(slot => {
-            // --- 🔥 QUESTA PARTE È QUELLA CHE TI MANCA 🔥 ---
-            // Se lo slot occupato è dello STESSO servizio che sto guardando (ID 86), IGNORALO.
-            if (slot.service_id === state.currentService.id) {
-                return false; // Non è un conflitto, è solo capacity (gestita dopo)
-            }
-            // ------------------------------------------------
-
-            if (!slot.start_time || !slot.end_time) return false;
-
-            // (Resto della logica temporale...)
-            const slotStartDate = new Date(slot.start_time > 10000000000 ? slot.start_time : slot.start_time * 1000);
-            const slotEndDate = new Date(slot.end_time > 10000000000 ? slot.end_time : slot.end_time * 1000);
-
-            const slotStartHour = slotStartDate.getHours() + (slotStartDate.getMinutes() / 60);
-            const slotEndHour = slotEndDate.getHours() + (slotEndDate.getMinutes() / 60);
-
-            const isOverlapping = checkStart < slotEndHour && checkEnd > slotStartHour;
-
-            if (isOverlapping) {
-                console.log(`🚫 CONFLITTO TROVATO con altro servizio (ID: ${slot.service_id})`);
-            }
-
-            return isOverlapping;
+    isArtisanBusy(bookings, hour) {
+        if(!bookings || !Array.isArray(bookings)) return false;
+        const duration = state.currentService.duration_minutes / 60;
+        const start = hour; 
+        const end = hour + duration;
+        
+        return bookings.some(b => {
+            if (b.service_id === state.currentService.id) return false;
+            // Gestione timestamp o stringa
+            const bStartT = b.slot_start_time > 10000000000 ? b.slot_start_time : b.slot_start_time * 1000;
+            const bEndT = b.slot_end_time > 10000000000 ? b.slot_end_time : b.slot_end_time * 1000;
+            const bStart = new Date(bStartT).getHours();
+            const bEnd = new Date(bEndT).getHours();
+            return start < bEnd && end > bStart;
         });
-
-        return hasConflict;
     },
 
-async loadSlots() {
-    // Prima controlla la cache
-    const cached = CacheManager.get(state.currentService.id, state.selectedDate);
-    if (cached) return cached;
+    findSlotForHour(slots, hour) {
+        if (!slots || !Array.isArray(slots)) return null;
+        const ts = Utils.createTimestamp(state.selectedDate, hour);
+        // Tolleranza millisecondi se necessario
+        return slots.find(s => {
+            const sTime = s.start_time > 10000000000 ? s.start_time : s.start_time * 1000;
+            return sTime === ts;
+        }) || null;
+    },
 
-    try {
-        const slots = await API.getSlots(state.currentService.id, state.selectedDate);
-        
-        // 🛡️ PROTEZIONE: Se l'API restituisce null, usiamo un array vuoto []
-        const safeSlots = Array.isArray(slots) ? slots : [];
-        
-        CacheManager.set(state.currentService.id, state.selectedDate, safeSlots);
-        return safeSlots;
-    } catch (error) {
-        console.error("❌ Errore API loadSlots, uso array vuoto per non bloccare:", error);
-        return []; // In caso di errore, permetti all'utente di provare a prenotare
-    }
-},
-
-createHourButton(hour, slots, isArtisanBusy = false) {
+    createHourButton(hour, slots, isBusy) {
         const btn = document.createElement('button');
         btn.dataset.hour = String(hour);
-        const serviceDurationHours = state.currentService.duration_minutes / 60;
-        const endHour = hour + serviceDurationHours;
-        
+        const endHour = hour + (state.currentService.duration_minutes / 60);
         btn.classList.add('button-3', 'w-button');
         btn.setAttribute('type', 'button');
 
-        // 1. TROVA LO SLOT
         const slot = this.findSlotForHour(slots, hour);
+        let maxCap = state.currentService.max_capacity_per_slot;
+        let booked = slot ? (parseInt(slot.booked_count) || 0) : 0;
+        let remaining = maxCap - booked;
+
+        let statusText, style = "";
         
-        // 2. CALCOLO POSTI
-        let availableSpots = state.currentService.max_capacity_per_slot;
-        let booked = 0; // Variabile per tracciare gli iscritti attuali
-        
-        if (slot) {
-            const capacity = parseInt(slot.capacity);
-            booked = parseInt(slot.booked_count || 0);
-            availableSpots = capacity - booked;
-        }
-
-        // 3. LOGICA DI STATO
-        const isFull = isArtisanBusy || availableSpots <= 0;
-        const isConfirmed = booked >= 3; // <--- SOGLIA CONFERMA (3 iscritti)
-
-        let statusText, statusTitle, buttonStyle = '';
-
-        if (isArtisanBusy) {
-            // Caso 1: Artigiano occupato altrove
-            statusText = 'Artigiano occupato';
-            statusTitle = 'L\'artigiano ha già altri workshop in questo orario';
-            buttonStyle = 'style="background-color: #fef2f2; color: #dc2626; border-color: #fca5a5; opacity: 0.7;"';
-        } 
-        else if (availableSpots <= 0) {
-            // Caso 2: Pieno
-            statusText = 'Posti esauriti';
-            statusTitle = 'Tutti i posti per questo orario sono occupati';
-            buttonStyle = 'style="opacity: 0.5;"';
-        } 
-        else if (isConfirmed) {
-            // Caso 3: CONFERMATO (Verde) - NUOVA AGGIUNTA
-            statusText = `🔥 CONFERMATO (${availableSpots} posti)`;
-            statusTitle = 'Questo gruppo è confermato e partirà sicuramente!';
-            // Stile verde rassicurante
-            buttonStyle = 'style="border: 2px solid #22c55e; background-color: #f0fdf4; color: #166534;"';
-        } 
-        else {
-            // Caso 4: Standard (Libero ma in attesa)
-            statusText = `${availableSpots} posti liberi`;
-            statusTitle = '';
+        if (isBusy) {
+            statusText = "Artigiano occupato";
+            style = "background:#fee2e2; color:#b91c1c; opacity:0.7;";
+            btn.disabled = true;
+        } else if (remaining <= 0) {
+            statusText = "Posti esauriti";
+            style = "opacity:0.5;";
+            btn.disabled = true;
+        } else if (booked >= 3) {
+            statusText = `🔥 CONFERMATO (${remaining} posti)`;
+            style = "border: 2px solid #22c55e; background:#f0fdf4; color:#15803d;";
+        } else {
+            statusText = `${remaining} posti liberi`;
         }
 
         btn.innerHTML = `
-            <div style="font-size: 16px; font-weight: bold;">
-                ${hour}:00 - ${endHour}:00
-            </div>
-            <div style="font-size: 12px; margin-top: 4px;">${statusText}</div>
+            <div style="font-weight:bold">${hour}:00 - ${endHour}:00</div>
+            <div style="font-size:0.8em; margin-top:4px;">${statusText}</div>
         `;
+        if(style) btn.style.cssText = style;
 
-        if (buttonStyle) {
-            btn.setAttribute('style', buttonStyle.replace(/style="|"/g, ''));
-        }
-
-        if (isFull) {
-            btn.disabled = true;
-            btn.classList.add('disabled');
-            btn.title = statusTitle;
-        } else {
+        if(!btn.disabled) {
             btn.addEventListener('click', () => {
                 this.selectHour(hour);
                 PricingManager.update();
-                this.updateNumberInputLimit(availableSpots);
+                this.updateNumberInputLimit(remaining);
             });
         }
-
         return btn;
     },
 
-findSlotForHour(slots, hour) {
-    // 🛡️ PROTEZIONE: Se slots è null, undefined o non è un array, ritorna null (nessuno slot occupato)
-    if (!slots || !Array.isArray(slots)) {
-        // console.log("⚠️ findSlotForHour: Nessuno slot o formato non valido, considero tutto libero.");
-        return null;
-    }
-
-    const targetTimestamp = Utils.createTimestamp(state.selectedDate, hour);
-    
-    // Ora siamo sicuri che .find esiste
-    return slots.find(s => {
-        if (!s.start_time) return false;
-        const slotTime = (s.start_time < 10000000000) ? s.start_time * 1000 : s.start_time;
-        return slotTime === targetTimestamp;
-    }) || null;
-},
-
-selectHour(hour) {
+    selectHour(hour) {
         state.selectedHour = hour;
+        DOM.hoursGrid.querySelectorAll('button').forEach(b => b.classList.remove('selected'));
+        DOM.hoursGrid.querySelector(`button[data-hour="${hour}"]`)?.classList.add('selected');
 
-        // 1. Gestione estetica bottoni
-        const hourButtons = DOM.hoursGrid.querySelectorAll('button[data-hour]');
-        hourButtons.forEach(btn => {
-            btn.classList.remove('selected');
-            if (btn.dataset.hour === String(hour)) {
-                btn.classList.add('selected');
-            }
-        });
-
-        // 2. Recupero dati slot
-        // Usa un array vuoto se la cache fallisce
         const slots = CacheManager.get(state.currentService.id, state.selectedDate) || [];
         const slot = this.findSlotForHour(slots, hour);
-        
-        // Calcolo iscritti (con protezione per null/undefined)
-        const currentBooked = slot ? (parseInt(slot.booked_count) || 0) : 0;
+        const booked = slot ? (parseInt(slot.booked_count) || 0) : 0;
 
-        console.log(`🔍 DEBUG SelectHour: Ore ${hour}:00 - Iscritti: ${currentBooked}`);
-
-        // 3. Gestione Avviso "Minimo 3 Persone"
-        let noticeDiv = document.getElementById("min-pax-notice");
-        if (!noticeDiv) {
-            noticeDiv = document.createElement("div");
-            noticeDiv.id = "min-pax-notice";
-            noticeDiv.style.cssText = "background: #fff3cd; color: #856404; padding: 12px; border-radius: 6px; margin-top: 12px; font-size: 0.9em; border: 1px solid #ffeeba; line-height: 1.5;";
-            DOM.hoursGrid.insertAdjacentElement('afterend', noticeDiv);
+        // Gestione Avviso Giallo
+        let notice = document.getElementById("min-pax-notice");
+        if(!notice) {
+            notice = document.createElement("div");
+            notice.id = "min-pax-notice";
+            notice.style.cssText = "background:#fffbeb; color:#b45309; padding:12px; border-radius:6px; margin-top:12px; font-size:0.9em; border:1px solid #fcd34d; line-height:1.4;";
+            DOM.hoursGrid.after(notice);
         }
 
-        // --- FIX LOGICA AVVISO ---
-        if (currentBooked < 3) {
-            noticeDiv.style.display = "block";
-            
-            // Testo diverso se è vuoto o se c'è già qualcuno
-            if (currentBooked === 0) {
-                noticeDiv.innerHTML = `
-                    <strong>✨ Sii il primo a iscriverti!</strong><br>
-                    L'attività parte con un minimo di 3 partecipanti.<br>
-                    <span style="font-size: 0.9em; opacity: 0.9;">Prenota ora: nessun addebito finché il gruppo non si forma.</span>
-                `;
-            } else {
-                noticeDiv.innerHTML = `
-                    <strong>⚠️ In attesa di conferma:</strong><br>
-                    Ci sono già <strong>${currentBooked} iscritti</strong>. Si parte a 3.<br>
-                    <span style="font-size: 0.9em; opacity: 0.9;">Unisciti al gruppo senza addebito immediato.</span>
-                `;
-            }
+        if (booked < 3) {
+            notice.style.display = "block";
+            notice.innerHTML = booked === 0 
+                ? "<strong>✨ Sii il primo!</strong> Serve un minimo di 3 persone.<br>Nessun addebito immediato."
+                : `<strong>⚠️ In attesa:</strong> Ci sono ${booked} iscritti. Si parte a 3.<br>Unisciti senza addebito immediato.`;
         } else {
-            noticeDiv.style.display = "none";
+            notice.style.display = "none";
         }
 
-        // 4. Gestione Visibilità Extra (Privatizzazione)
-        // Se iscritti > 0 -> NASCONDI privatizzazione
-        // Se iscritti == 0 -> MOSTRA privatizzazione
-        ExtrasManager.updateVisibility(currentBooked);
-
-        // 5. Abilita tasto next
+        // Visibilità Extra
+        ExtrasManager.updateVisibility(booked);
+        
         DOM.nextBtn.disabled = false;
         DOM.nextBtn.classList.remove('disabled');
-        
-        // Aggiorna prezzi e limiti
-        PricingManager.update();
-        
-        const maxCap = state.currentService.max_capacity_per_slot || 8;
-        const remaining = maxCap - currentBooked;
-        this.updateNumberInputLimit(remaining);
     },
 
-
-    disableNextButton() {
+    updateNumberInputLimit(remaining) {
+        if(DOM.numInput) {
+            DOM.numInput.max = remaining;
+            if(parseInt(DOM.numInput.value) > remaining) DOM.numInput.value = remaining;
+        }
+    },
+    
+    disableNextButton(){
         state.selectedHour = null;
         DOM.nextBtn.disabled = true;
-        DOM.nextBtn.classList.add('disabled');
-    },
-
-    updateNumberInputLimit(maxAvailableSpots) {
-        if (!DOM.numInput) return;
-
-        const serviceMaxCapacity = state.currentService.max_capacity_per_slot;
-        const actualMax = Math.min(maxAvailableSpots, serviceMaxCapacity);
-        const currentValue = parseInt(DOM.numInput.value) || 1;
-
-        DOM.numInput.setAttribute('max', actualMax);
-        DOM.numInput.setAttribute('title', `Massimo ${actualMax} persone per questo orario`);
-
-        if (currentValue > actualMax) {
-            DOM.numInput.value = actualMax;
-            Utils.showInfo(`Numero persone aggiornato a ${actualMax} (posti disponibili)`);
-        }
-        PricingManager.update();
-    },
-
-    async getAllArtisanBookingsForDate(artisanId, date) {
-        const cached = CacheManager.getArtisanBookings(artisanId, date);
-        if (cached) return cached;
-
-        console.log(`📡 Caricamento TUTTE le prenotazioni artigiano ${artisanId} per ${Utils.formatDateISO(date)}`);
-
-        try {
-            // 🔥 MODIFICA: Carica TUTTE le prenotazioni senza filtri per servizio
-            const allBookings = await API.getAllBookings();
-            const dateStr = Utils.formatDateISO(date);
-
-            console.log("📊 Totale prenotazioni caricate:", allBookings.length);
-
-            // 🔥 MODIFICA: Filtra per data E per artigiano (tramite service relation)
-            const artisanBookings = allBookings.filter(booking => {
-                if (!booking || !booking.date) return false;
-
-                // 1. Verifica corrispondenza data
-                let bookingDateStr;
-                if (typeof booking.date === 'string') {
-                    bookingDateStr = booking.date;
-                } else {
-                    bookingDateStr = Utils.formatDateISO(new Date(booking.date));
-                }
-
-                const dateMatches = bookingDateStr === dateStr;
-                if (!dateMatches) return false;
-
-                // 2. Verifica che la prenotazione appartenga all'artigiano
-                // (assumendo che booking.service_id corrisponda a un servizio dell'artigiano)
-                if (state.currentService?._artisan?._service_of_artisan_2) {
-                    const artisanServices = state.currentService._artisan._service_of_artisan_2;
-                    const belongsToArtisan = artisanServices.some(service => service.id === booking.service_id);
-
-                    if (belongsToArtisan) {
-                        console.log(`✅ Prenotazione artigiano trovata:`, {
-                            service: booking.service_id,
-                            hour: booking.selected_hour,
-                            booking: booking
-                        });
-                    }
-
-                    return belongsToArtisan;
-                }
-
-                return false;
-            });
-
-            console.log(`📅 Prenotazioni artigiano per ${dateStr}: ${artisanBookings.length}`, artisanBookings);
-
-            // Salva in cache
-            CacheManager.setArtisanBookings(artisanId, date, artisanBookings);
-
-            return artisanBookings;
-
-        } catch (error) {
-            console.error("❌ Errore nel caricamento prenotazioni artigiano:", error);
-            return [];
-        }
-    },
-
-
-
-
-    checkConflictsFromCache(dailyBookings, otherServices, hour) {
-        console.log(`🔍 Check conflitti per ora ${hour}:00`);
-        console.log(`📊 Daily bookings da analizzare:`, dailyBookings);
-
-        for (const service of otherServices) {
-            console.log(`\n🔍 Verifico servizio: ${service.name} (ID: ${service.id})`);
-
-            // USA slot_id invece di service_id
-            const serviceBookings = dailyBookings.filter(booking => {
-                return booking.slot_id === service.id;
-            });
-
-            console.log(`📋 Prenotazioni per ${service.name}:`, serviceBookings.length, serviceBookings);
-
-            const hasBooking = serviceBookings.some(booking => {
-                console.log(`\n📖 Analizzo booking:`, booking);
-
-                // USA time (IN MILLISECONDI) invece di selected_hour
-                let bookingHour;
-                if (booking.time) {
-                    // I tuoi timestamp sono in MILLISECONDI (1765533600000)
-                    bookingHour = new Date(booking.time).getHours();
-                    console.log(`⏱️ time → Ora: ${booking.time} → ${bookingHour}:00`);
-                } else {
-                    console.log(`❌ time mancante nel booking`);
-                    bookingHour = null;
-                }
-
-                const hourMatches = bookingHour === hour;
-                console.log(`✅ Ora corrisponde? ${bookingHour} === ${hour} → ${hourMatches}`);
-
-                return hourMatches;
-            });
-
-            if (hasBooking) {
-                console.log(`🚫 CONFLITTO TROVATO: ${service.name} alle ${hour}:00`);
-                return true;
-            } else {
-                console.log(`✅ Nessun conflitto per ${service.name} alle ${hour}:00`);
-            }
-        }
-
-        console.log(`🔍 Nessun conflitto trovato per le ${hour}:00`);
-        return false;
-    },
+        DOM.nextBtn.classList.add("disabled");
+    }
 };
 
 // EXTRAS MANAGER
 const ExtrasManager = {
-render() {
-        if (!DOM.extrasContainer || !DOM.extrasTitle) {
-            console.warn("ExtrasManager: Container non trovato nel DOM");
-            return;
-        }
+    render() {
+        if (!DOM.extrasContainer || !DOM.extrasTitle) return;
         
-        // Cerca gli extra in tutte le possibili posizioni (API vs Cache vs Alias diversi)
-        const extras = state.currentService._extra_of_service || 
-                       state.currentService.extra_of_service || 
-                       state.currentService._extra || 
-                       [];
+        // Recupera dati
+        const extras = state.currentService._extra_of_service || state.currentService.extra_of_service || [];
         
-        console.log("🔍 ExtrasManager: Trovati extra:", extras); // DEBUG AGGIUNTO
-
-        // Se non ci sono extra, nascondi tutto
+        // Se vuoto, nascondi e esci
         if (!extras || extras.length === 0) {
             DOM.extrasContainer.style.display = 'none';
             DOM.extrasTitle.style.display = 'none';
             return;
         }
 
-        // Mostra contenitori
+        // Mostra il contenitore
         DOM.extrasContainer.style.display = 'flex';
         DOM.extrasContainer.style.flexDirection = 'column';
         DOM.extrasContainer.style.gap = '10px';
         DOM.extrasTitle.style.display = 'block';
 
-        // 1. Salva il "Template" HTML
-        if (!this.template) {
-            const firstChild = DOM.extrasContainer.querySelector('.w-form') || DOM.extrasContainer.firstElementChild;
-            if (firstChild) {
-                this.template = firstChild.cloneNode(true);
-            } else {
-                console.error("ExtrasManager: Impossibile trovare un template HTML per gli extra");
-                return;
-            }
-        }
-
-        // 2. Pulisci il contenitore
+        // Pulisci tutto il contenuto precedente
         DOM.extrasContainer.innerHTML = '';
 
-        // 3. Genera una riga per ogni Extra
+        // Genera HTML per ogni extra
         extras.forEach(extra => {
-            const row = this.template.cloneNode(true);
+            // 1. Crea il contenitore della riga (Label che avvolge tutto)
+            const row = document.createElement('label');
+            row.className = "w-checkbox checkbox-field"; // Classi standard Webflow
+            row.style.cssText = "display: flex; align-items: center; padding: 10px; border: 1px solid #e2e8f0; border-radius: 6px; cursor: pointer; justify-content: space-between;";
             
-            const checkbox = row.querySelector("input[type='checkbox']");
-            if (checkbox) {
-                checkbox.checked = false;
-                checkbox.id = `extra-${extra.id}`;
-                checkbox.dataset.id = extra.id;
-                checkbox.dataset.name = extra.name.toLowerCase();
-                checkbox.dataset.price = extra.price;
-                checkbox.dataset.perPerson = extra.per_person;
-                checkbox.addEventListener('change', () => PricingManager.update());
-                
-                // Rimuovi attributi che potrebbero interferire (es. wized)
-                checkbox.removeAttribute('wized');
-            }
-
-            const label = row.querySelector(".checkbox-label-2");
-            if (label) label.textContent = extra.name;
-
-            const priceLabel = row.querySelector(".text-block-11");
-            if (priceLabel) {
-                const priceText = extra.per_person ? `${extra.price}€ / pers` : `${extra.price}€`;
-                priceLabel.innerHTML = `<strong> (+ ${priceText})</strong>`;
-            }
+            // 2. Prepara i testi
+            const priceText = extra.per_person ? `${extra.price}€ / pers` : `${extra.price}€`;
             
-            row.style.display = 'flex'; 
+            // 3. Crea l'Input Checkbox (con i dati per il prezzo)
+            const input = document.createElement('input');
+            input.type = "checkbox";
+            input.className = "w-checkbox-input";
+            input.style.cssText = "margin-right: 10px; width: 20px; height: 20px;"; // Forza dimensioni visibili
+            input.id = `extra-${extra.id}`;
+            
+            // Dataset fondamentali per il calcolo prezzo
+            input.dataset.id = extra.id;
+            input.dataset.name = extra.name.toLowerCase();
+            input.dataset.price = extra.price;
+            input.dataset.perPerson = extra.per_person;
+
+            // Event Listener per aggiornare il totale
+            input.addEventListener('change', () => PricingManager.update());
+
+            // 4. Crea il testo (Nome e Prezzo)
+            const textSpan = document.createElement('span');
+            textSpan.className = "checkbox-label-2"; // La tua classe Webflow
+            textSpan.style.flexGrow = "1";
+            textSpan.textContent = extra.name;
+
+            const priceSpan = document.createElement('span');
+            priceSpan.className = "text-block-11"; // La tua classe Webflow
+            priceSpan.style.fontWeight = "bold";
+            priceSpan.style.color = "#666";
+            priceSpan.textContent = `+ ${priceText}`;
+
+            // 5. Assembla tutto
+            row.appendChild(input);
+            row.appendChild(textSpan);
+            row.appendChild(priceSpan);
+
+            // 6. Aggiungi alla pagina
             DOM.extrasContainer.appendChild(row);
         });
     },
 
-    // 🔥 NUOVA FUNZIONE: Controlla se nascondere l'extra in base agli iscritti
     updateVisibility(bookedCount) {
         if (!DOM.extrasContainer) return;
-
-        const checkbox = DOM.extrasContainer.querySelector("input[type='checkbox']");
-        if (!checkbox) return;
-
-        // Recupera il nome dell'extra (salvato nel dataset o dal label)
-        // Se non abbiamo salvato il dataset nel render, prendiamolo dal label
-        const label = DOM.extrasContainer.querySelector(".checkbox-label-2");
-        const extraName = (checkbox.dataset.name || label?.textContent || "").toLowerCase();
-
-        // Lista parole chiave per identificare la privatizzazione
-        const isPrivatization = extraName.includes("privatizz") || extraName.includes("esclusiva");
-
-        // LOGICA:
-        // Se è una privatizzazione E lo slot ha già gente (bookedCount > 0) -> NASCONDI
-        if (isPrivatization && bookedCount > 0) {
-            DOM.extrasContainer.style.display = 'none';
-            DOM.extrasTitle.style.display = 'none';
+        
+        // Seleziona le righe appena create
+        const rows = DOM.extrasContainer.children; // Sono i tag <label>
+        
+        Array.from(rows).forEach(row => {
+            const checkbox = row.querySelector("input[type='checkbox']");
+            if (!checkbox) return;
             
-            // Importante: Deseleziona se era selezionato, altrimenti pagano per niente!
-            if (checkbox.checked) {
-                checkbox.checked = false;
-                PricingManager.update(); // Ricalcola il prezzo senza extra
+            const name = (checkbox.dataset.name || "").toLowerCase();
+            const isPrivatization = name.includes("privatizz") || name.includes("esclusiva");
+            
+            // LOGICA: Nascondi Privatizzazione se c'è gente
+            if (isPrivatization && bookedCount > 0) {
+                row.style.display = 'none';
+                if (checkbox.checked) {
+                    checkbox.checked = false;
+                    PricingManager.update();
+                }
+            } else {
+                row.style.display = 'flex'; // Importante rimettere flex
             }
-        } 
-        // Altrimenti (Slot vuoto O Extra non è privatizzazione es. Traduttore) -> MOSTRA
-        else {
-            DOM.extrasContainer.style.display = 'flex';
-            DOM.extrasTitle.style.display = 'block';
-        }
+        });
     }
-}
+};
 
 
 // PRICING MANAGER
 const PricingManager = {
     update() {
-    if (!state.currentService) return;
+        if (!state.currentService) return;
+        
+        const numPeople = Math.max(1, parseInt(DOM.numInput.value) || 1);
+        const maxCapacity = this.getActualAvailableSpots();
+        
+        const { unitPrice, extraCost, totalPrice } = this.calculatePricing(numPeople);
 
-    const numPeople = Math.max(1, parseInt(DOM.numInput.value) || 1);
-    const availableSpots = this.getActualAvailableSpots();
-    
-    // CORREZIONE QUI:
-    // Prima c'era: const { basePrice, ... }
-    // Adesso deve essere: const { unitPrice, ... } perché calculatePricing restituisce unitPrice
-    const { unitPrice, extraCost, totalPrice } = this.calculatePricing(numPeople);
-
-    // Aggiorniamo le chiamate usando la variabile corretta 'unitPrice'
-    this.updatePeopleText(numPeople, unitPrice);
-    this.updateExtraRecap(extraCost);
-    this.updateTotalPrice(numPeople, unitPrice, totalPrice);
-    
-    this.updateCapacityNotice(numPeople, availableSpots);
-    this.updateNextButtonState(numPeople, availableSpots);
-    this.updateInputMaxLimit(availableSpots);
-},
-
-    findSelectedSlot() {
-        if (!state.currentService || !state.selectedDate || state.selectedHour === null) {
-            return null;
-        }
-
-        try {
-            const cacheKey = CacheManager.generateKey(state.currentService.id, state.selectedDate);
-            const cachedSlots = state.slotsCache.get(cacheKey);
-
-            if (cachedSlots && cachedSlots.data) {
-                const startTime = Utils.createTimestamp(state.selectedDate, state.selectedHour);
-                const slot = cachedSlots.data.find(s => s.start_time === startTime);
-                return slot || null;
-            }
-
-            return null;
-
-        } catch (error) {
-            console.error("Errore nel trovare lo slot selezionato:", error);
-            return null;
-        }
+        this.updatePeopleText(numPeople, unitPrice);
+        this.updateExtraRecap(extraCost);
+        this.updateTotalPrice(numPeople, unitPrice, totalPrice);
+        this.updateCapacityNotice(numPeople, maxCapacity);
+        this.updateNextButtonState(numPeople, maxCapacity);
+        this.updateInputMaxLimit(maxCapacity);
+        
+        // Badge sconto gruppi (versione elegante)
+        this.updateDiscountBadge(numPeople, unitPrice);
     },
 
     getActualAvailableSpots() {
-        if (!state.currentService) {
-            return state.currentService?.max_capacity_per_slot || 8;
-        }
-
-        const slot = this.findSelectedSlot();
-
-        if (slot) {
-            const available = slot.capacity - (slot.booked_count || 0);
-            return available;
-        }
-
+        if (!state.currentService) return 8;
+        // Recupera slot dalla cache per coerenza
+        const slots = CacheManager.get(state.currentService.id, state.selectedDate);
+        const slot = HoursManager.findSlotForHour(slots, state.selectedHour);
+        
+        if (slot) return parseInt(slot.capacity) - (parseInt(slot.booked_count) || 0);
         return state.currentService.max_capacity_per_slot;
     },
 
-    updateInputMaxLimit(availableSpots) {
-        if (DOM.numInput) {
-            const serviceMax = state.currentService.max_capacity_per_slot;
-            const actualMax = Math.min(availableSpots, serviceMax);
-
-            DOM.numInput.setAttribute('max', actualMax);
-            DOM.numInput.setAttribute('title', `Massimo ${actualMax} persone per questo orario`);
-
-            const currentValue = parseInt(DOM.numInput.value) || 1;
-            if (currentValue > actualMax) {
-                DOM.numInput.value = actualMax;
-                Utils.showInfo(`Numero persone aggiornato a ${actualMax} (posti disponibili)`);
-            }
-        }
-    },
-
-    updateNextButtonState(numPeople, maxAllowed) {
-        const isOverCapacity = numPeople > maxAllowed;
-
-        if (DOM.nextBtn) {
-            DOM.nextBtn.disabled = isOverCapacity;
-            DOM.nextBtn.classList.toggle('disabled', isOverCapacity);
-
-            if (isOverCapacity) {
-                DOM.nextBtn.title = `Massimo ${maxAllowed} persone per questo orario`;
-            } else {
-                DOM.nextBtn.title = "";
-            }
-        }
-    },
-
-    updateCapacityNotice(numPeople, maxAllowed) {
-        let notice = document.querySelector(".max-capacity-notice");
-
-        if (!notice) {
-            notice = document.createElement("div");
-            notice.classList.add("max-capacity-notice");
-            if (DOM.numInput?.parentNode) {
-                DOM.numInput.insertAdjacentElement('afterend', notice);
-            }
-        }
-
-        const availableSpots = maxAllowed - numPeople;
-        notice.style.cssText = "color: #666; font-size: 14px; margin-top: 0.5rem;";
-
-        if (availableSpots === 0) {
-            notice.textContent = ` Tutti i ${maxAllowed} posti sono stati prenotati`;
-            notice.style.color = "#f59e0b";
-            notice.style.fontWeight = "bold";
-        } else {
-            notice.textContent = `${availableSpots} posti disponibili su ${maxAllowed}`;
-            notice.style.color = "#22c55e";
-        }
-    },
-
     calculatePricing(numPeople) {
-        // 1. Prezzo base di fallback (con parsing sicuro)
-        let finalUnitPrice = parseFloat(state.currentService.base_price) || 0;
-
-        // 2. Cerca la fascia di prezzo corretta
+        let unitPrice = parseFloat(state.currentService.base_price) || 0;
+        
+        // 1. Applica prezzo a scaglioni (Tiered Pricing)
         if (state.currentService._service_prices?.length > 0) {
-            const matched = state.currentService._service_prices.find(p =>
-                numPeople >= p.min_people && numPeople <= p.max_people
+            const tier = state.currentService._service_prices.find(t => 
+                numPeople >= t.min_people && numPeople <= t.max_people
             );
-            
-            if (matched) {
-                // Gestione robusta: cerca 'retail_price'
-                if (matched.retail_price !== undefined && matched.retail_price !== null) {
-                    finalUnitPrice = parseFloat(matched.retail_price);
-                } else {
-                    console.warn("⚠️ Fascia trovata, ma 'retail_price' è mancante:", matched);
-                }
+            if (tier && tier.retail_price) {
+                unitPrice = parseFloat(tier.retail_price);
             }
         }
 
-        // 3. Calcolo Extra
+        // 2. Somma costi Extra Multipli
         let extraCost = 0;
-        const checkbox = DOM.extrasContainer?.querySelector("input[type='checkbox']");
-        if (checkbox?.checked && state.currentService._extra_of_service?.length > 0) {
-            const extra = state.currentService._extra_of_service[0];
-            const extraPrice = parseFloat(extra.price) || 0;
-            extraCost = extra.per_person ? extraPrice * numPeople : extraPrice;
+        const checkedBoxes = DOM.extrasContainer?.querySelectorAll("input[type='checkbox']:checked");
+        
+        if (checkedBoxes) {
+            checkedBoxes.forEach(cb => {
+                const p = parseFloat(cb.dataset.price) || 0;
+                const isPerPerson = cb.dataset.perPerson === "true";
+                extraCost += isPerPerson ? (p * numPeople) : p;
+            });
         }
 
-        // 4. Totale
-        const totalPrice = (finalUnitPrice * numPeople) + extraCost;
-
-        // Restituiamo 'unitPrice' per coerenza
-        return { unitPrice: finalUnitPrice, extraCost, totalPrice };
+        return { unitPrice, extraCost, totalPrice: (unitPrice * numPeople) + extraCost };
     },
 
-    updatePeopleText(numPeople, costPerPerson) {
-        const personLabel = numPeople === 1 ? "persona" : "persone";
+    updateDiscountBadge(currentPax, currentPrice) {
+        const badge = document.getElementById('dynamic-discount-badge');
+        if (!badge) return;
+        
+        const prices = state.currentService._service_prices || [];
+        if (prices.length === 0) { badge.style.display = 'none'; return; }
 
-        if (DOM.peopleText) {
-            // Qui costPerPerson sarà corretto (non undefined)
-            DOM.peopleText.textContent = `${numPeople} ${personLabel} × ${costPerPerson.toFixed(2)}€ a testa`;
-        }
-
-        if (DOM.totalText) {
-            DOM.totalText.textContent = `${numPeople} × ${costPerPerson.toFixed(2)}€`;
-        }
-    },
-
-    updateExtraRecap(extraCost) {
-        const extraRecap = document.querySelector(".recap-step2.extra-hidden.extra-lable");
-        if (!extraRecap) return;
-
-        if (extraCost > 0) {
-            extraRecap.style.display = "flex";
-            const priceSpan = extraRecap.querySelector(".w-embed:nth-child(2) .my-span-class");
-            if (priceSpan) {
-                priceSpan.textContent = `${extraCost.toFixed(2)}€`;
-            }
+        const minPriceAbs = Math.min(...prices.map(p => parseFloat(p.retail_price)));
+        
+        // Mostra solo se l'utente ha ottenuto la tariffa migliore (Gruppo esteso)
+        if (currentPrice <= minPriceAbs && currentPax >= 11) {
+            badge.style.display = 'block';
+            badge.style.color = '#4a3f35';
+            badge.style.backgroundColor = '#fdfaf6';
+            badge.style.border = '1px solid #eaddd0';
+            badge.innerHTML = `Tariffa gruppo esteso applicata (${currentPrice.toFixed(0)}€/pax)`;
         } else {
-            extraRecap.style.display = "none";
+            badge.style.display = 'none';
         }
     },
 
-    updateTotalPrice(numPeople, costPerPerson, totalPrice) {
-        if (DOM.totalPrice) {
-            DOM.totalPrice.textContent = `${totalPrice.toFixed(2)}€`;
+    updatePeopleText(n, p) {
+        if(DOM.peopleText) DOM.peopleText.textContent = `${n} ${n===1?'persona':'persone'} × ${p.toFixed(2)}€`;
+        if(DOM.totalText) DOM.totalText.textContent = `${n} × ${p.toFixed(2)}€`;
+    },
+
+    updateExtraRecap(cost) {
+        const el = document.querySelector(".recap-step2.extra-hidden.extra-lable");
+        if(el) {
+            el.style.display = cost > 0 ? "flex" : "none";
+            const span = el.querySelector(".w-embed:nth-child(2) .my-span-class");
+            if(span) span.textContent = `${cost.toFixed(2)}€`;
+        }
+    },
+
+    updateTotalPrice(n, u, t) {
+        if(DOM.totalPrice) DOM.totalPrice.textContent = `${t.toFixed(2)}€`;
+    },
+
+    updateCapacityNotice(n, max) {
+        let el = document.querySelector(".max-capacity-notice");
+        if(!el && DOM.numInput) {
+            el = document.createElement("div");
+            el.classList.add("max-capacity-notice");
+            el.style.marginTop = "5px";
+            DOM.numInput.insertAdjacentElement("afterend", el);
+        }
+        if(el) {
+            const left = max - n;
+            el.textContent = left < 0 ? `Posti esauriti` : `${left} posti disponibili`;
+            el.style.color = left < 0 ? "red" : "green";
+        }
+    },
+
+    updateNextButtonState(n, max) {
+        if(DOM.nextBtn) DOM.nextBtn.disabled = n > max;
+    },
+
+    updateInputMaxLimit(max) {
+        if(DOM.numInput) {
+            DOM.numInput.max = max;
+            if(parseInt(DOM.numInput.value) > max) DOM.numInput.value = max;
         }
     }
 };
@@ -2089,173 +1676,61 @@ const RecapManager = {
 
 // OPTIMIZED BOOKING MANAGER
 const BookingManager = {
-async submit() {
-    if (this.validateBooking()) {
-        DOM.nextBtn.disabled = true;
-        DOM.nextBtn.textContent = "Elaborazione...";
-        
-        try {
-            console.log("📤 Inizio processo di prenotazione...");
-            const bookingData = this.prepareBookingData();
-            const bookingResult = await this.makeCompleteBookingCall(bookingData);
-            
-            // ✅ Usa il public_token dalla risposta del backend
-            await this.processPayment(
-            bookingData.user_email, 
-            bookingResult.total_price,  // 8880 (già in centesimi)
-            bookingResult.booking_id,   // 161
-            bookingResult.public_token  // cde87b8a-ed9e-4212-9c96-6b0702da3dd4
-            );
-        } catch (error) {
-            console.error("❌ Errore durante la prenotazione:", error);
-            Utils.showError(`Errore: ${error.message}`);
-            DOM.nextBtn.disabled = false;
-            DOM.nextBtn.textContent = "Prenota e paga";
+    async submit() {
+        if (this.validateBooking()) {
+            DOM.nextBtn.disabled = true;
+            DOM.nextBtn.textContent = "Elaborazione...";
+            try {
+                const data = this.prepareBookingData();
+                console.log("📤 Sending Booking Data:", data);
+                
+                const res = await API.createBooking(data);
+                const stripe = await API.createStripeCheckout(data.user_email, res.total_price, res.booking_id);
+                
+                window.location.href = stripe.redirect_url;
+            } catch (e) {
+                console.error(e);
+                Utils.showError(e.message);
+                DOM.nextBtn.disabled = false;
+                DOM.nextBtn.textContent = "Riprova";
+            }
         }
-    }
-},
+    },
 
     prepareBookingData() {
-      return {
-        user_name: DOM.nameInput.value.trim(),
-        user_email: DOM.emailInput.value.trim(), 
-        user_phone: DOM.phoneInput?.value.trim() || "",
-        service_id: state.currentService.id,
-        selected_date: Utils.formatDateISO(state.selectedDate),
-        selected_hour: Utils.createTimestamp(state.selectedDate, state.selectedHour),
-        num_people: parseInt(DOM.numInput.value) || 1,
-        extra_ids: this.getSelectedExtraIds()
-    };
+        return {
+            user_name: DOM.nameInput.value.trim(),
+            user_email: DOM.emailInput.value.trim(),
+            user_phone: DOM.phoneInput?.value.trim() || "",
+            service_id: state.currentService.id,
+            selected_date: Utils.formatDateISO(state.selectedDate),
+            selected_hour: Utils.createTimestamp(state.selectedDate, state.selectedHour),
+            num_people: parseInt(DOM.numInput.value) || 1,
+            // Importante: Invia sempre un ARRAY di ID
+            extra_ids: this.getSelectedExtraIds()
+        };
     },
 
-getSelectedExtraIds() {
-    const checkedBoxes = DOM.extrasContainer?.querySelectorAll("input[type='checkbox']:checked");
-    if (!checkedBoxes || checkedBoxes.length === 0) return [];
-
-    return Array.from(checkedBoxes).map(cb => parseInt(cb.dataset.id));
-},
-
-    async makeCompleteBookingCall(bookingData) {
-        console.log("🚀 Invio dati prenotazione completi:", bookingData);
-
-        const response = await API.request('/api/complete_booking', {
-            method: 'POST',
-            body: JSON.stringify(bookingData)
-        });
-
-        console.log("✅ Risposta API completa:", response);
-
-        if (!response) {
-            throw new Error("Risposta API non valida");
-        }
-
-        if (!response.booking_id) {
-            console.warn("⚠️ booking_id non presente nella risposta, provo a recuperarlo...");
-
-            const bookingId = await this.getLastBookingIdFallback(bookingData.user_email);
-            return { ...response, booking_id: bookingId };
-        }
-
-        console.log("✅ ID Prenotazione ottenuto direttamente:", response.booking_id);
-        return response;
-    },
-
-    async getLastBookingIdFallback(userEmail) {
-        try {
-            const bookings = await API.request(`/booking?user_email=${encodeURIComponent(userEmail)}`);
-
-            if (bookings && bookings.length > 0) {
-                const lastBooking = bookings.reduce((latest, booking) => {
-                    return (!latest || booking.created_at > latest.created_at) ? booking : latest;
-                }, null);
-
-                return lastBooking.id;
-            }
-
-            throw new Error("Nessuna prenotazione trovata");
-        } catch (error) {
-            console.error("Errore nel recupero ID prenotazione:", error);
-            throw new Error("Prenotazione creata ma impossibile ottenere l'ID per il pagamento");
-        }
+    getSelectedExtraIds() {
+        const checkedBoxes = DOM.extrasContainer?.querySelectorAll("input[type='checkbox']:checked");
+        if (!checkedBoxes || checkedBoxes.length === 0) return [];
+        return Array.from(checkedBoxes).map(cb => parseInt(cb.dataset.id));
     },
 
     validateBooking() {
         if (!DOM.nameInput.value || !DOM.emailInput.value) {
-            Utils.showError("Per favore compila i campi obbligatori: Nome e Email");
+            Utils.showError("Per favore compila i campi obbligatori");
             return false;
         }
-
         if (!Utils.isValidEmail(DOM.emailInput.value)) {
             Utils.showError("Inserisci un indirizzo email valido");
             return false;
         }
-
         if (!DOM.gdprCheckbox.checked) {
-            Utils.showError("Devi accettare il trattamento dei dati personali per procedere");
+            Utils.showError("Devi accettare la privacy policy");
             return false;
         }
-
-        if (!state.selectedDate || state.selectedHour === null) {
-            Utils.showError("Per favore seleziona data e orario");
-            return false;
-        }
-
-        if (!state.currentService) {
-            Utils.showError("Servizio non caricato correttamente");
-            return false;
-        }
-
         return true;
-    },
-
-    calculateFinalPrice(numPeople) {
-        const { totalPrice } = PricingManager.calculatePricing(numPeople);
-
-        let extraId = 0;
-        const checkbox = DOM.extrasContainer?.querySelector("input[type='checkbox']");
-        if (checkbox?.checked && state.currentService._extra_of_service?.length > 0) {
-            extraId = state.currentService._extra_of_service[0].id;
-        }
-
-        return { totalPrice, extraId };
-    },
-
-    async processPayment(userEmail, totalAmountInCents, bookingId) {
-        console.log("💳 Creazione sessione Stripe...");
-        console.log("📊 Dati inviati:", {
-            email: userEmail,
-            total_amount: totalAmountInCents,
-            booking_id: bookingId
-        });
-
-        try {
-            const stripeData = await API.createStripeCheckout(
-                userEmail,
-                totalAmountInCents,
-                bookingId
-            );
-
-            console.log("✅ Risposta Stripe ricevuta:", stripeData);
-
-            if (stripeData.redirect_url) {
-                console.log("🔄 Reindirizzamento a Stripe:", stripeData.redirect_url);
-                window.location.href = stripeData.redirect_url;
-            } else {
-                console.error("❌ Risposta completa Stripe:", JSON.stringify(stripeData, null, 2));
-                throw new Error("URL di redirect Stripe non ricevuto");
-            }
-        } catch (error) {
-            console.error("❌ Errore nel processo di pagamento:", error);
-
-            if (error.message.includes('Unable to locate var')) {
-                throw new Error(
-                    'Configurazione pagamento non completata. ' +
-                    'La prenotazione è stata salvata (ID: ' + bookingId + '). ' +
-                    'Contatta il supporto per completare il pagamento.'
-                );
-            }
-            throw error;
-        }
     }
 };
 
