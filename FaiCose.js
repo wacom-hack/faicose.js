@@ -1396,7 +1396,7 @@ const ExtrasManager = {
             // 1. Crea il contenitore della riga (Label che avvolge tutto)
             const row = document.createElement('label');
             row.className = "w-checkbox checkbox-field"; // Classi standard Webflow
-            row.style.cssText = "display: flex; align-items: center; padding: 10px; border: 1px solid #e2e8f0; border-radius: 6px; cursor: pointer; justify-content: space-between;";
+            row.style.cssText = "display: flex; align-items: center; padding: 10px; border-radius: 6px; cursor: pointer; justify-content: space-between;";
             
             // 2. Prepara i testi
             const priceText = extra.per_person ? `${extra.price}€ / pers` : `${extra.price}€`;
