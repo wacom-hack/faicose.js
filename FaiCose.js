@@ -346,7 +346,7 @@ async getServiceBySlug(slug) {
     },
 
     async createBooking(bookingData) {
-        return await this.request('/booking', {
+        return await this.request('/api/complete_booking', {
             method: 'POST',
             body: JSON.stringify(bookingData)
         });
