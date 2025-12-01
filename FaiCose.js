@@ -1495,56 +1495,56 @@ findSlotForHour(slots, hour) {
 },
 
 selectHour(hour) {
-    state.selectedHour = hour;
+        state.selectedHour = hour;
 
-    // 1. Gestione estetica bottoni
-    const hourButtons = DOM.hoursGrid.querySelectorAll('button[data-hour]');
-    hourButtons.forEach(btn => {
-        btn.classList.remove('selected');
-        if (btn.dataset.hour === String(hour)) {
-            btn.classList.add('selected');
+        // 1. Gestione estetica bottoni
+        const hourButtons = DOM.hoursGrid.querySelectorAll('button[data-hour]');
+        hourButtons.forEach(btn => {
+            btn.classList.remove('selected');
+            if (btn.dataset.hour === String(hour)) {
+                btn.classList.add('selected');
+            }
+        });
+
+        // 2. Recupero dati slot dalla cache
+        const slots = CacheManager.get(state.currentService.id, state.selectedDate);
+        const slot = this.findSlotForHour(slots, hour);
+        const currentBooked = slot ? (parseInt(slot.booked_count) || 0) : 0;
+
+        // 3. Gestione Avviso "Minimo 3 Persone"
+        let noticeDiv = document.getElementById("min-pax-notice");
+        if (!noticeDiv) {
+            noticeDiv = document.createElement("div");
+            noticeDiv.id = "min-pax-notice";
+            noticeDiv.style.cssText = "background: #fff3cd; color: #856404; padding: 12px; border-radius: 6px; margin-top: 12px; font-size: 0.9em; border: 1px solid #ffeeba; line-height: 1.5;";
+            DOM.hoursGrid.insertAdjacentElement('afterend', noticeDiv);
         }
-    });
 
-    // --- 🛠️ FIX RECUPERO DATI ---
-    // 1. Recuperiamo la lista degli slot dalla cache (la stessa usata per generare i bottoni)
-    const slots = CacheManager.get(state.currentService.id, state.selectedDate);
-    
-    // 2. Ora passiamo la LISTA (slots) alla funzione di ricerca, non la data
-    const slot = this.findSlotForHour(slots, hour);
-    
-    // 3. Leggiamo il numero di iscritti
-    const currentBooked = slot ? (parseInt(slot.booked_count) || 0) : 0;
-    // ----------------------------
+        if (currentBooked > 0 && currentBooked < 3) {
+            noticeDiv.style.display = "block";
+            noticeDiv.innerHTML = `
+                <strong>⚠️ In attesa di conferma:</strong><br>
+                Ci sono già <strong>${currentBooked} iscritti</strong>. L'attività parte a 3.<br>
+                <span style="font-size: 0.9em;">Prenota senza addebito immediato.</span>
+            `;
+        } else {
+            noticeDiv.style.display = "none";
+        }
 
-    // 4. Gestione Avviso "Minimo 3 Persone"
-    let noticeDiv = document.getElementById("min-pax-notice");
-    
-    if (!noticeDiv) {
-        noticeDiv = document.createElement("div");
-        noticeDiv.id = "min-pax-notice";
-        noticeDiv.style.cssText = "background: #fff3cd; color: #856404; padding: 12px; border-radius: 6px; margin-top: 12px; font-size: 0.9em; border: 1px solid #ffeeba; line-height: 1.5;";
-        DOM.hoursGrid.insertAdjacentElement('afterend', noticeDiv);
-    }
+        // --- 🔥 MODIFICA QUI: Aggiorna visibilità Extra ---
+        // Passiamo il numero di iscritti attuali allo slot
+        ExtrasManager.updateVisibility(currentBooked);
+        // ------------------------------------------------
 
-    if (currentBooked < 3) {
-        noticeDiv.style.display = "block";
-        noticeDiv.innerHTML = `
-            <strong>⚠️ In attesa di conferma:</strong><br>
-            Attualmente ci sono <strong>${currentBooked} iscritti</strong>. L'attività parte con un minimo di 3 partecipanti.<br>
-            <span style="font-size: 0.9em; opacity: 0.9;">
-            Se prenoti ora, chiederemo solo una pre-autorizzazione (nessun addebito) finché il gruppo non si forma.
-            Oppure aggiungi l'extra <strong>"Privatizzazione"</strong> per confermare subito!
-            </span>
-        `;
-    } else {
-        noticeDiv.style.display = "none";
-    }
-
-    // 5. Abilita tasto next
-    DOM.nextBtn.disabled = false;
-    DOM.nextBtn.classList.remove('disabled');
-},
+        // 5. Abilita tasto next
+        DOM.nextBtn.disabled = false;
+        DOM.nextBtn.classList.remove('disabled');
+        
+        // Aggiorna prezzi e limiti
+        PricingManager.update();
+        const remaining = state.currentService.max_capacity_per_slot - currentBooked;
+        this.updateNumberInputLimit(remaining);
+    },
 
 
     disableNextButton() {
@@ -1685,30 +1685,69 @@ selectHour(hour) {
 const ExtrasManager = {
     render() {
         if (!DOM.extrasContainer || !DOM.extrasTitle) return;
-
+        
         const extras = state.currentService._extra_of_service;
-
+        
+        // Renderizza l'extra (assumiamo sia il primo della lista come da tua struttura)
         if (extras?.length > 0) {
             const extra = extras[0];
-            DOM.extrasContainer.style.display = "flex";
-            DOM.extrasTitle.style.display = "block";
-
+            
+            // Imposta testo e prezzo
+            DOM.extrasContainer.style.display = 'flex';
+            DOM.extrasTitle.style.display = 'block';
+            
             const checkbox = DOM.extrasContainer.querySelector("input[type='checkbox']");
-            if (checkbox) checkbox.checked = false;
-
-            const nameSpan = DOM.extrasContainer.querySelector(".checkbox-label-2");
-            if (nameSpan) nameSpan.textContent = extra.name;
-
-            const priceDiv = DOM.extrasContainer.querySelector(".text-block-11");
-            if (priceDiv) {
-                priceDiv.innerHTML = `<strong> (+</strong>${extra.price}<strong>€)</strong>`;
+            if (checkbox) {
+                checkbox.checked = false; // Reset iniziale
+                checkbox.dataset.name = extra.name.toLowerCase(); // Salviamo il nome per controlli futuri
             }
+            
+            const label = DOM.extrasContainer.querySelector(".checkbox-label-2");
+            if (label) label.textContent = extra.name;
+            
+            const priceLabel = DOM.extrasContainer.querySelector(".text-block-11");
+            if (priceLabel) priceLabel.innerHTML = `<strong> (+</strong>${extra.price}<strong>€)</strong>`;
+            
         } else {
-            DOM.extrasContainer.style.display = "none";
-            DOM.extrasTitle.style.display = "none";
+            DOM.extrasContainer.style.display = 'none';
+            DOM.extrasTitle.style.display = 'none';
+        }
+    },
+
+    // 🔥 NUOVA FUNZIONE: Controlla se nascondere l'extra in base agli iscritti
+    updateVisibility(bookedCount) {
+        if (!DOM.extrasContainer) return;
+
+        const checkbox = DOM.extrasContainer.querySelector("input[type='checkbox']");
+        if (!checkbox) return;
+
+        // Recupera il nome dell'extra (salvato nel dataset o dal label)
+        // Se non abbiamo salvato il dataset nel render, prendiamolo dal label
+        const label = DOM.extrasContainer.querySelector(".checkbox-label-2");
+        const extraName = (checkbox.dataset.name || label?.textContent || "").toLowerCase();
+
+        // Lista parole chiave per identificare la privatizzazione
+        const isPrivatization = extraName.includes("privatizz") || extraName.includes("esclusiva");
+
+        // LOGICA:
+        // Se è una privatizzazione E lo slot ha già gente (bookedCount > 0) -> NASCONDI
+        if (isPrivatization && bookedCount > 0) {
+            DOM.extrasContainer.style.display = 'none';
+            DOM.extrasTitle.style.display = 'none';
+            
+            // Importante: Deseleziona se era selezionato, altrimenti pagano per niente!
+            if (checkbox.checked) {
+                checkbox.checked = false;
+                PricingManager.update(); // Ricalcola il prezzo senza extra
+            }
+        } 
+        // Altrimenti (Slot vuoto O Extra non è privatizzazione es. Traduttore) -> MOSTRA
+        else {
+            DOM.extrasContainer.style.display = 'flex';
+            DOM.extrasTitle.style.display = 'block';
         }
     }
-};
+}
 
 
 // PRICING MANAGER
