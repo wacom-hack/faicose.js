@@ -1709,35 +1709,77 @@ selectHour(hour) {
 
 // EXTRAS MANAGER
 const ExtrasManager = {
-    render() {
-        if (!DOM.extrasContainer || !DOM.extrasTitle) return;
+render() {
+        if (!DOM.extrasContainer || !DOM.extrasTitle) {
+            console.warn("ExtrasManager: Container non trovato nel DOM");
+            return;
+        }
         
-        const extras = state.currentService._extra_of_service;
+        // Cerca gli extra in tutte le possibili posizioni (API vs Cache vs Alias diversi)
+        const extras = state.currentService._extra_of_service || 
+                       state.currentService.extra_of_service || 
+                       state.currentService._extra || 
+                       [];
         
-        // Renderizza l'extra (assumiamo sia il primo della lista come da tua struttura)
-        if (extras?.length > 0) {
-            const extra = extras[0];
-            
-            // Imposta testo e prezzo
-            DOM.extrasContainer.style.display = 'flex';
-            DOM.extrasTitle.style.display = 'block';
-            
-            const checkbox = DOM.extrasContainer.querySelector("input[type='checkbox']");
-            if (checkbox) {
-                checkbox.checked = false; // Reset iniziale
-                checkbox.dataset.name = extra.name.toLowerCase(); // Salviamo il nome per controlli futuri
-            }
-            
-            const label = DOM.extrasContainer.querySelector(".checkbox-label-2");
-            if (label) label.textContent = extra.name;
-            
-            const priceLabel = DOM.extrasContainer.querySelector(".text-block-11");
-            if (priceLabel) priceLabel.innerHTML = `<strong> (+</strong>${extra.price}<strong>€)</strong>`;
-            
-        } else {
+        console.log("🔍 ExtrasManager: Trovati extra:", extras); // DEBUG AGGIUNTO
+
+        // Se non ci sono extra, nascondi tutto
+        if (!extras || extras.length === 0) {
             DOM.extrasContainer.style.display = 'none';
             DOM.extrasTitle.style.display = 'none';
+            return;
         }
+
+        // Mostra contenitori
+        DOM.extrasContainer.style.display = 'flex';
+        DOM.extrasContainer.style.flexDirection = 'column';
+        DOM.extrasContainer.style.gap = '10px';
+        DOM.extrasTitle.style.display = 'block';
+
+        // 1. Salva il "Template" HTML
+        if (!this.template) {
+            const firstChild = DOM.extrasContainer.querySelector('.w-form') || DOM.extrasContainer.firstElementChild;
+            if (firstChild) {
+                this.template = firstChild.cloneNode(true);
+            } else {
+                console.error("ExtrasManager: Impossibile trovare un template HTML per gli extra");
+                return;
+            }
+        }
+
+        // 2. Pulisci il contenitore
+        DOM.extrasContainer.innerHTML = '';
+
+        // 3. Genera una riga per ogni Extra
+        extras.forEach(extra => {
+            const row = this.template.cloneNode(true);
+            
+            const checkbox = row.querySelector("input[type='checkbox']");
+            if (checkbox) {
+                checkbox.checked = false;
+                checkbox.id = `extra-${extra.id}`;
+                checkbox.dataset.id = extra.id;
+                checkbox.dataset.name = extra.name.toLowerCase();
+                checkbox.dataset.price = extra.price;
+                checkbox.dataset.perPerson = extra.per_person;
+                checkbox.addEventListener('change', () => PricingManager.update());
+                
+                // Rimuovi attributi che potrebbero interferire (es. wized)
+                checkbox.removeAttribute('wized');
+            }
+
+            const label = row.querySelector(".checkbox-label-2");
+            if (label) label.textContent = extra.name;
+
+            const priceLabel = row.querySelector(".text-block-11");
+            if (priceLabel) {
+                const priceText = extra.per_person ? `${extra.price}€ / pers` : `${extra.price}€`;
+                priceLabel.innerHTML = `<strong> (+ ${priceText})</strong>`;
+            }
+            
+            row.style.display = 'flex'; 
+            DOM.extrasContainer.appendChild(row);
+        });
     },
 
     // 🔥 NUOVA FUNZIONE: Controlla se nascondere l'extra in base agli iscritti
