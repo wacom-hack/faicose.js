@@ -1406,7 +1406,7 @@ async loadSlots() {
     }
 },
 
-    createHourButton(hour, slots, isArtisanBusy = false) {
+createHourButton(hour, slots, isArtisanBusy = false) {
         const btn = document.createElement('button');
         btn.dataset.hour = String(hour);
         const serviceDurationHours = state.currentService.duration_minutes / 60;
@@ -1415,50 +1415,58 @@ async loadSlots() {
         btn.classList.add('button-3', 'w-button');
         btn.setAttribute('type', 'button');
 
-        // 1. TROVA LO SLOT SPECIFICO PER QUESTO ORARIO E SERVIZIO
-        // Questo slot contiene il 'booked_count' specifico per QUESTO corso
+        // 1. TROVA LO SLOT
         const slot = this.findSlotForHour(slots, hour);
         
-        // 2. CALCOLO POSTI (Logica Semplificata)
-        // Se lo slot esiste, usiamo la sua capacità residua.
-        // Se lo slot non esiste ancora (nessuna prenotazione), tutti i posti sono liberi.
+        // 2. CALCOLO POSTI
         let availableSpots = state.currentService.max_capacity_per_slot;
+        let booked = 0; // Variabile per tracciare gli iscritti attuali
         
         if (slot) {
-            // Assicuriamoci di trattare i numeri come numeri
             const capacity = parseInt(slot.capacity);
-            const booked = parseInt(slot.booked_count || 0);
+            booked = parseInt(slot.booked_count || 0);
             availableSpots = capacity - booked;
         }
 
-        // 3. LOGICA DI STATO (Priorità: Artigiano Occupato > Posti Esauriti > Libero)
-        // isArtisanBusy è true SOLO se c'è un conflitto con UN ALTRO servizio (grazie al fix di prima)
+        // 3. LOGICA DI STATO
         const isFull = isArtisanBusy || availableSpots <= 0;
+        const isConfirmed = booked >= 3; // <--- SOGLIA CONFERMA (3 iscritti)
 
         let statusText, statusTitle, buttonStyle = '';
 
         if (isArtisanBusy) {
+            // Caso 1: Artigiano occupato altrove
             statusText = 'Artigiano occupato';
             statusTitle = 'L\'artigiano ha già altri workshop in questo orario';
             buttonStyle = 'style="background-color: #fef2f2; color: #dc2626; border-color: #fca5a5; opacity: 0.7;"';
-        } else if (availableSpots <= 0) {
+        } 
+        else if (availableSpots <= 0) {
+            // Caso 2: Pieno
             statusText = 'Posti esauriti';
             statusTitle = 'Tutti i posti per questo orario sono occupati';
             buttonStyle = 'style="opacity: 0.5;"';
-        } else {
-            // Qui mostriamo il numero corretto
+        } 
+        else if (isConfirmed) {
+            // Caso 3: CONFERMATO (Verde) - NUOVA AGGIUNTA
+            statusText = `🔥 CONFERMATO (${availableSpots} posti)`;
+            statusTitle = 'Questo gruppo è confermato e partirà sicuramente!';
+            // Stile verde rassicurante
+            buttonStyle = 'style="border: 2px solid #22c55e; background-color: #f0fdf4; color: #166534;"';
+        } 
+        else {
+            // Caso 4: Standard (Libero ma in attesa)
             statusText = `${availableSpots} posti liberi`;
             statusTitle = '';
         }
 
         btn.innerHTML = `
-        <div style="font-size: 16px; font-weight: bold;">
-            ${hour}:00 - ${endHour}:00
-        </div>
-        <div style="font-size: 12px; margin-top: 4px;">${statusText}</div>
-    `;
+            <div style="font-size: 16px; font-weight: bold;">
+                ${hour}:00 - ${endHour}:00
+            </div>
+            <div style="font-size: 12px; margin-top: 4px;">${statusText}</div>
+        `;
 
-if (buttonStyle) {
+        if (buttonStyle) {
             btn.setAttribute('style', buttonStyle.replace(/style="|"/g, ''));
         }
 
