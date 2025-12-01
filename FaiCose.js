@@ -1755,11 +1755,6 @@ const BookingManager = {
     // Funzione helper per il pagamento
     async processPayment(userEmail, totalAmountInCents, bookingId) {
         console.log("🚀 5. Chiamata a Stripe Checkout...");
-        console.log("📊 Dati inviati:", {
-            email: userEmail,
-            total_amount: totalAmountInCents,
-            booking_id: bookingId
-        });
 
         try {
             const stripeData = await API.createStripeCheckout(
