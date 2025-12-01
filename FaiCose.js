@@ -2082,19 +2082,17 @@ async submit() {
         selected_date: Utils.formatDateISO(state.selectedDate),
         selected_hour: Utils.createTimestamp(state.selectedDate, state.selectedHour),
         num_people: parseInt(DOM.numInput.value) || 1,
-        booking_extra_id: this.getSelectedExtraId(),
+        extra_ids: this.getSelectedExtraIds()
     };
     },
 
-getSelectedExtraId() {
-    const extraCheckbox = DOM.extrasContainer?.querySelector('input[type="checkbox"]');
-    const hasExtra = extraCheckbox?.checked && state.currentService._extra_of_service?.length > 0;
-    
-    if (hasExtra) {
-        return state.currentService._extra_of_service[0].id;
-    }
-    return null;  // o 0 se preferisci
+getSelectedExtraIds() {
+    const checkedBoxes = DOM.extrasContainer?.querySelectorAll("input[type='checkbox']:checked");
+    if (!checkedBoxes || checkedBoxes.length === 0) return [];
+
+    return Array.from(checkedBoxes).map(cb => parseInt(cb.dataset.id));
 },
+
     async makeCompleteBookingCall(bookingData) {
         console.log("🚀 Invio dati prenotazione completi:", bookingData);
 
