@@ -1682,14 +1682,32 @@ const BookingManager = {
             DOM.nextBtn.textContent = "Elaborazione...";
             try {
                 const data = this.prepareBookingData();
-                console.log("📤 Sending Booking Data:", data);
+                console.log("🔵 1. Dati inviati a complete_booking:", data);
                 
+                // Chiamata 1: Crea prenotazione su Xano
                 const res = await API.createBooking(data);
-                const stripe = await API.createStripeCheckout(data.user_email, res.total_price, res.booking_id);
                 
-                window.location.href = stripe.redirect_url;
+                // --- DEBUG: Analisi risposta Xano ---
+                console.log("🟢 2. Risposta RAW da Xano:", res);
+                
+                // TENTATIVO DI RECUPERO ID ROBUSTO
+                // Cerca l'ID ovunque possa nascondersi (diretto, in .response, o dentro l'oggetto booking)
+                const idReale = res.booking_id || (res.response && res.response.booking_id) || (res.booking && res.booking.id);
+                
+                // TENTATIVO DI RECUPERO PREZZO
+                const prezzoReale = res.total_price || (res.response && res.response.total_price) || 0;
+
+                console.log(`🔶 4. Valori estratti -> ID: ${idReale}, Prezzo: ${prezzoReale}`);
+
+                if (!idReale) {
+                    throw new Error("⛔ ID PRENOTAZIONE NON TROVATO NELLA RISPOSTA! Controlla i log sopra.");
+                }
+
+                // Chiamata 2: Crea sessione Stripe (Usando processPayment per coerenza)
+                await this.processPayment(data.user_email, prezzoReale, idReale);
+
             } catch (e) {
-                console.error(e);
+                console.error("❌ ERRORE:", e);
                 Utils.showError(e.message);
                 DOM.nextBtn.disabled = false;
                 DOM.nextBtn.textContent = "Riprova";
@@ -1700,13 +1718,13 @@ const BookingManager = {
     prepareBookingData() {
         return {
             user_name: DOM.nameInput.value.trim(),
-            user_email: DOM.emailInput.value.trim(),
+            user_email: DOM.emailInput.value.trim(), 
             user_phone: DOM.phoneInput?.value.trim() || "",
             service_id: state.currentService.id,
             selected_date: Utils.formatDateISO(state.selectedDate),
             selected_hour: Utils.createTimestamp(state.selectedDate, state.selectedHour),
             num_people: parseInt(DOM.numInput.value) || 1,
-            // Importante: Invia sempre un ARRAY di ID
+            // Importante: extra_ids è un array, gestito dalla funzione sotto
             extra_ids: this.getSelectedExtraIds()
         };
     },
@@ -1714,6 +1732,7 @@ const BookingManager = {
     getSelectedExtraIds() {
         const checkedBoxes = DOM.extrasContainer?.querySelectorAll("input[type='checkbox']:checked");
         if (!checkedBoxes || checkedBoxes.length === 0) return [];
+        // Restituisce array di interi (es: [29, 23])
         return Array.from(checkedBoxes).map(cb => parseInt(cb.dataset.id));
     },
 
@@ -1731,6 +1750,59 @@ const BookingManager = {
             return false;
         }
         return true;
+    },
+
+    // Funzione helper per il pagamento
+    async processPayment(userEmail, totalAmountInCents, bookingId) {
+        console.log("🚀 5. Chiamata a Stripe Checkout...");
+        console.log("📊 Dati inviati:", {
+            email: userEmail,
+            total_amount: totalAmountInCents,
+            booking_id: bookingId
+        });
+
+        try {
+            const stripeData = await API.createStripeCheckout(
+                userEmail,
+                totalAmountInCents,
+                bookingId
+            );
+
+            console.log("🏁 6. Risposta Stripe ricevuta:", stripeData);
+
+            if (stripeData.redirect_url) {
+                console.log("🔄 Reindirizzamento a Stripe:", stripeData.redirect_url);
+                window.location.href = stripeData.redirect_url;
+            } else {
+                console.error("❌ Risposta completa Stripe:", JSON.stringify(stripeData, null, 2));
+                throw new Error("URL di redirect Stripe non ricevuto");
+            }
+        } catch (error) {
+            console.error("❌ Errore nel processo di pagamento:", error);
+            if (error.message.includes('Unable to locate var')) {
+                throw new Error(
+                    'Errore tecnico nel pagamento. La prenotazione ID ' + bookingId + ' è stata salvata. Contatta il supporto.'
+                );
+            }
+            throw error;
+        }
+    },
+    
+    // Fallback per recuperare l'ID se la prima chiamata fallisce (Opzionale, ma utile tenerlo)
+    async getLastBookingIdFallback(userEmail) {
+        try {
+            const bookings = await API.request(`/booking?user_email=${encodeURIComponent(userEmail)}`);
+            if (bookings && bookings.length > 0) {
+                const lastBooking = bookings.reduce((latest, booking) => {
+                    return (!latest || booking.created_at > latest.created_at) ? booking : latest;
+                }, null);
+                return lastBooking.id;
+            }
+            throw new Error("Nessuna prenotazione trovata");
+        } catch (error) {
+            console.error("Errore nel recupero ID prenotazione:", error);
+            throw new Error("Prenotazione creata ma impossibile ottenere l'ID per il pagamento");
+        }
     }
 };
 
