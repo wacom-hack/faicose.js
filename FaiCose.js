@@ -1514,10 +1514,15 @@ selectHour(hour) {
             }
         });
 
-        // 2. Recupero dati slot dalla cache
-        const slots = CacheManager.get(state.currentService.id, state.selectedDate);
+        // 2. Recupero dati slot
+        // Usa un array vuoto se la cache fallisce
+        const slots = CacheManager.get(state.currentService.id, state.selectedDate) || [];
         const slot = this.findSlotForHour(slots, hour);
+        
+        // Calcolo iscritti (con protezione per null/undefined)
         const currentBooked = slot ? (parseInt(slot.booked_count) || 0) : 0;
+
+        console.log(`🔍 DEBUG SelectHour: Ore ${hour}:00 - Iscritti: ${currentBooked}`);
 
         // 3. Gestione Avviso "Minimo 3 Persone"
         let noticeDiv = document.getElementById("min-pax-notice");
@@ -1528,21 +1533,32 @@ selectHour(hour) {
             DOM.hoursGrid.insertAdjacentElement('afterend', noticeDiv);
         }
 
-        if (currentBooked > 0 && currentBooked < 3) {
+        // --- FIX LOGICA AVVISO ---
+        if (currentBooked < 3) {
             noticeDiv.style.display = "block";
-            noticeDiv.innerHTML = `
-                <strong>⚠️ In attesa di conferma:</strong><br>
-                Ci sono già <strong>${currentBooked} iscritti</strong>. L'attività parte a 3.<br>
-                <span style="font-size: 0.9em;">Prenota senza addebito immediato.</span>
-            `;
+            
+            // Testo diverso se è vuoto o se c'è già qualcuno
+            if (currentBooked === 0) {
+                noticeDiv.innerHTML = `
+                    <strong>✨ Sii il primo a iscriverti!</strong><br>
+                    L'attività parte con un minimo di 3 partecipanti.<br>
+                    <span style="font-size: 0.9em; opacity: 0.9;">Prenota ora: nessun addebito finché il gruppo non si forma.</span>
+                `;
+            } else {
+                noticeDiv.innerHTML = `
+                    <strong>⚠️ In attesa di conferma:</strong><br>
+                    Ci sono già <strong>${currentBooked} iscritti</strong>. Si parte a 3.<br>
+                    <span style="font-size: 0.9em; opacity: 0.9;">Unisciti al gruppo senza addebito immediato.</span>
+                `;
+            }
         } else {
             noticeDiv.style.display = "none";
         }
 
-        // --- 🔥 MODIFICA QUI: Aggiorna visibilità Extra ---
-        // Passiamo il numero di iscritti attuali allo slot
+        // 4. Gestione Visibilità Extra (Privatizzazione)
+        // Se iscritti > 0 -> NASCONDI privatizzazione
+        // Se iscritti == 0 -> MOSTRA privatizzazione
         ExtrasManager.updateVisibility(currentBooked);
-        // ------------------------------------------------
 
         // 5. Abilita tasto next
         DOM.nextBtn.disabled = false;
@@ -1550,7 +1566,9 @@ selectHour(hour) {
         
         // Aggiorna prezzi e limiti
         PricingManager.update();
-        const remaining = state.currentService.max_capacity_per_slot - currentBooked;
+        
+        const maxCap = state.currentService.max_capacity_per_slot || 8;
+        const remaining = maxCap - currentBooked;
         this.updateNumberInputLimit(remaining);
     },
 
