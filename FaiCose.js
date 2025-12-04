@@ -1340,7 +1340,7 @@ const HoursManager = {
         if (booked < 3) {
             notice.style.display = "block";
             notice.innerHTML = booked === 0 
-                ? "<strong>✨ Sii il primo!</strong> Serve un minimo di 3 persone.<br>Nessun addebito immediato."
+                ? "Sii il primo! Serve un minimo di 3 persone: <strong>se il corso non parte, non ti sarà addebitato nulla</strong>. Preferisci bloccare subito la data? <strong> Prenota in esclusiva.</strong>"
                 : `<strong>⚠️ In attesa:</strong> Ci sono ${booked} iscritti. Si parte a 3.<br>Unisciti senza addebito immediato.`;
         } else {
             notice.style.display = "none";
