@@ -1274,50 +1274,58 @@ const HoursManager = {
         }) || null;
     },
 
-    createHourButton(hour, slots, isBusy) {
-        const btn = document.createElement('button');
-        btn.dataset.hour = String(hour);
-        const endHour = hour + (state.currentService.duration_minutes / 60);
-        btn.classList.add('button-3', 'w-button');
-        btn.setAttribute('type', 'button');
+createHourButton(hour, slots, isBusy) {
+    const btn = document.createElement('button');
+    btn.dataset.hour = String(hour);
+    const endHour = hour + (state.currentService.duration_minutes / 60);
+    btn.classList.add('button-3', 'w-button');
+    btn.setAttribute('type', 'button');
 
-        const slot = this.findSlotForHour(slots, hour);
-        let maxCap = state.currentService.max_capacity_per_slot;
-        let booked = slot ? (parseInt(slot.booked_count) || 0) : 0;
-        let remaining = maxCap - booked;
+    const slot = this.findSlotForHour(slots, hour);
+    let maxCap = state.currentService.max_capacity_per_slot;
+    let booked = slot ? (parseInt(slot.booked_count) || 0) : 0;
+    let remaining = maxCap - booked;
 
-        let statusText, style = "";
-        
-        if (isBusy) {
-            statusText = "Artigiano occupato";
-            style = "background:#fee2e2; color:#b91c1c; opacity:0.7;";
-            btn.disabled = true;
-        } else if (remaining <= 0) {
-            statusText = "Posti esauriti";
-            style = "opacity:0.5;";
-            btn.disabled = true;
-        } else if (booked >= 3) {
-            statusText = `🔥 CONFERMATO (${remaining} posti)`;
-            style = "border: 2px solid #22c55e; background:#f0fdf4; color:#15803d;";
-        } else {
-            statusText = `${remaining} posti liberi`;
-        }
+    // NUOVO: Controlla se Xano ha marcato lo slot come esclusivo
+    const isPrivatized = slot && slot.is_exclusive === true;
 
-        btn.innerHTML = `
-            <div style="font-weight:bold">${hour}:00 - ${endHour}:00</div>
-            <div style="font-size:0.8em; margin-top:4px;">${statusText}</div>
-        `;
-        if(style) btn.style.cssText = style;
+    let statusText, style = "";
+    
+    // NUOVO: Ho aggiunto 'isPrivatized' alla condizione di blocco
+    if (isBusy || isPrivatized) {
+        // NUOVO: Messaggio specifico
+        statusText = isPrivatized ? "Evento Privato 🔒" : "Artigiano occupato";
+        // NUOVO: Stile leggermente diverso (opzionale)
+        style = isPrivatized 
+            ? "background:#fef2f2; color:#991b1b; opacity:1; border: 1px solid #fecaca;" 
+            : "background:#fee2e2; color:#b91c1c; opacity:0.7;";
+        btn.disabled = true;
+    } else if (remaining <= 0) {
+        statusText = "Posti esauriti";
+        style = "opacity:0.5;";
+        btn.disabled = true;
+    } else if (booked >= 3) {
+        statusText = `🔥 CONFERMATO (${remaining} posti)`;
+        style = "border: 2px solid #22c55e; background:#f0fdf4; color:#15803d;";
+    } else {
+        statusText = `${remaining} posti liberi`;
+    }
 
-        if(!btn.disabled) {
-            btn.addEventListener('click', () => {
-                this.selectHour(hour);
-                PricingManager.update();
-                this.updateNumberInputLimit(remaining);
-            });
-        }
-        return btn;
-    },
+    btn.innerHTML = `
+        <div style="font-weight:bold">${hour}:00 - ${endHour}:00</div>
+        <div style="font-size:0.8em; margin-top:4px;">${statusText}</div>
+    `;
+    if(style) btn.style.cssText = style;
+
+    if(!btn.disabled) {
+        btn.addEventListener('click', () => {
+            this.selectHour(hour);
+            PricingManager.update();
+            this.updateNumberInputLimit(remaining);
+        });
+    }
+    return btn;
+},
 
     selectHour(hour) {
         state.selectedHour = hour;
