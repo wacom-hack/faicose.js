@@ -340,10 +340,10 @@ async getServiceBySlug(slug) {
     },
 
 
-    async getSlots(serviceId, date) {
-        const dateStr = Utils.formatDateISO(date);
-        return await this.request(`/slots?service_id=${serviceId}&date=${dateStr}`);
-    },
+async getSlots(serviceId, date) {
+    const dateStr = Utils.formatDateISO(date);
+    return await this.request(`/slots/${serviceId}/${dateStr}`);
+},
 
     async createBooking(bookingData) {
         return await this.request('/api/complete_booking', {
