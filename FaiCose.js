@@ -930,53 +930,65 @@ isDaySelectable(date, today, dayOfWeekStr, defaultDays, specialDays, availStart,
 
     // 3. SE C'È UNA REGOLA
     if (ruleForThisDate) {
-        
-        // Debug specifico per vedere se stiamo lavorando sulla Rule 20
-        // if (ruleForThisDate.id === 20) console.log("Analisi Rule 20 per", dayOfWeekStr);
-
         let schedules = ruleForThisDate.daily_schedules;
 
-        // A. Caso Array Vuoto o Null -> Blocca tutto
-        if (!schedules || (Array.isArray(schedules) && schedules.length === 0)) {
-             // Caso particolare: array vuoto [] o stringa vuota ""
-             return false;
+        // --- 🕵️ DEBUG SPECIALE PER CAPIRE COSA SUCCEDE ---
+        const isDebugRule = ruleForThisDate.id === 20; // Debug solo sulla regola problematica
+        if (isDebugRule) {
+            console.log(`🔍 [DEBUG Rule 20] Raw Data:`, schedules);
+            console.log(`🔍 [DEBUG Rule 20] Tipo iniziale:`, typeof schedules);
         }
 
-        // B. Gestione Stringa JSON (se Xano invia stringa invece di oggetto)
+        // A. Gestione Stringa JSON (con tentativo di DOPPIO parse)
         if (typeof schedules === 'string') {
             try {
                 schedules = JSON.parse(schedules);
+                // A volte Xano invia una stringa che contiene una stringa JSON
+                if (typeof schedules === 'string') {
+                    if (isDebugRule) console.log("⚠️ Doppia codifica rilevata, secondo parse...");
+                    schedules = JSON.parse(schedules);
+                }
             } catch (e) {
-                console.error("Errore parse JSON schedules:", e);
+                console.error("❌ Errore JSON Parse:", e);
                 return false;
             }
         }
 
-        // C. APPIATTIMENTO TOTALE (La soluzione magica per [[...]])
-        // .flat(Infinity) trasforma [[{day: "Mer"}]] in [{day: "Mer"}]
-        const flattenedSchedules = Array.isArray(schedules) ? schedules.flat(Infinity) : [];
-
-        // D. Controllo se dopo l'appiattimento è vuoto (es. regola per bloccare giorni)
-        if (flattenedSchedules.length === 0) {
-            return false;
+        // B. Controllo se è un array valido
+        if (!Array.isArray(schedules)) {
+             if (isDebugRule) console.warn("⚠️ Schedules non è un array:", schedules);
+             return false;
         }
 
-        // E. Estrazione dei giorni validi
-        const validDays = flattenedSchedules
+        // C. Appiattimento sicuro (Flat)
+        // Usa .flat(Infinity) se esiste, altrimenti fallback manuale
+        const flattened = schedules.flat ? schedules.flat(Infinity) : [].concat(...schedules);
+        
+        if (isDebugRule) {
+            console.log(`🔍 [DEBUG Rule 20] Flattened:`, flattened);
+        }
+
+        if (flattened.length === 0) return false;
+
+        // D. Estrazione Giorni
+        const validDays = flattened
             .map(item => {
-                // Caso standard: oggetto { day: "Mer" }
-                if (item && item.day) return item.day;
-                // Caso alternativo: stringa diretta "Mer"
-                if (typeof item === 'string') return item;
+                if (!item) return null;
+                if (item.day) return item.day;     // Caso standard {day: "Mer"}
+                if (typeof item === 'string') return item; // Caso stringa "Mer"
                 return null;
             })
-            .filter(day => day !== null); // Mantiene solo i giorni validi
+            .filter(day => day !== null);
 
-        // F. Verifica finale
+        if (isDebugRule) {
+            console.log(`✅ [DEBUG Rule 20] Giorni validi estratti:`, validDays);
+            console.log(`❓ [DEBUG Rule 20] Cerco "${dayOfWeekStr}" in lista?`, validDays.includes(dayOfWeekStr));
+        }
+
         return validDays.includes(dayOfWeekStr);
     }
 
-    // 4. NESSUNA REGOLA: usa i giorni di default del servizio
+    // 4. NESSUNA REGOLA
     return defaultDays.includes(dayOfWeekStr);
 },
 
