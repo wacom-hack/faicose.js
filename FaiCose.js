@@ -1269,25 +1269,35 @@ const HoursManager = {
 createHourButton(hour, slots, isBusy) {
     const btn = document.createElement('button');
     btn.dataset.hour = String(hour);
-    const endHour = hour + (state.currentService.duration_minutes / 60);
     btn.classList.add('button-3', 'w-button');
     btn.setAttribute('type', 'button');
+
+    // --- FIX ORARIO: Calcolo corretto minuti ---
+    const durationHours = state.currentService.duration_minutes / 60;
+    const endDecimal = hour + durationHours;
+
+    // Funzione interna per trasformare 10.5 in "10:30"
+    const formatDecimalTime = (decimalTime) => {
+        const h = Math.floor(decimalTime);
+        const m = Math.round((decimalTime - h) * 60);
+        return `${h}:${String(m).padStart(2, '0')}`; // Aggiunge lo zero davanti se necessario (es. :00, :05)
+    };
+
+    const startStr = formatDecimalTime(hour);      // es. "9:00"
+    const endStr = formatDecimalTime(endDecimal);  // es. "10:30"
+    // -------------------------------------------
 
     const slot = this.findSlotForHour(slots, hour);
     let maxCap = state.currentService.max_capacity_per_slot;
     let booked = slot ? (parseInt(slot.booked_count) || 0) : 0;
     let remaining = maxCap - booked;
 
-    // NUOVO: Controlla se Xano ha marcato lo slot come esclusivo
     const isPrivatized = slot && slot.is_exclusive === true;
 
     let statusText, style = "";
     
-    // NUOVO: Ho aggiunto 'isPrivatized' alla condizione di blocco
     if (isBusy || isPrivatized) {
-        // NUOVO: Messaggio specifico
         statusText = isPrivatized ? "Evento Privato 🔒" : "Artigiano occupato";
-        // NUOVO: Stile leggermente diverso (opzionale)
         style = isPrivatized 
             ? "background:#fef2f2; color:#991b1b; opacity:1; border: 1px solid #fecaca;" 
             : "background:#fee2e2; color:#b91c1c; opacity:0.7;";
@@ -1296,15 +1306,16 @@ createHourButton(hour, slots, isBusy) {
         statusText = "Posti esauriti";
         style = "opacity:0.5;";
         btn.disabled = true;
-    } else if (booked >= 3) {
+    } else if (booked >= 3) { // Nota: qui potresti voler usare minPax se vuoi la logica verde dinamica
         statusText = `🔥 CONFERMATO (${remaining} posti)`;
         style = "border: 2px solid #22c55e; background:#f0fdf4; color:#15803d;";
     } else {
         statusText = `${remaining} posti liberi`;
     }
 
+    // Qui usiamo le nuove stringhe formattate
     btn.innerHTML = `
-        <div style="font-weight:bold">${hour}:00 - ${endHour}:00</div>
+        <div style="font-weight:bold">${startStr} - ${endStr}</div>
         <div style="font-size:0.8em; margin-top:4px;">${statusText}</div>
     `;
     if(style) btn.style.cssText = style;
