@@ -1319,39 +1319,46 @@ createHourButton(hour, slots, isBusy) {
     return btn;
 },
 
-    selectHour(hour) {
-        state.selectedHour = hour;
-        DOM.hoursGrid.querySelectorAll('button').forEach(b => b.classList.remove('selected'));
-        DOM.hoursGrid.querySelector(`button[data-hour="${hour}"]`)?.classList.add('selected');
+selectHour(hour) {
+    state.selectedHour = hour;
+    DOM.hoursGrid.querySelectorAll('button').forEach(b => b.classList.remove('selected'));
+    DOM.hoursGrid.querySelector(`button[data-hour="${hour}"]`)?.classList.add('selected');
 
-        const slots = CacheManager.get(state.currentService.id, state.selectedDate) || [];
-        const slot = this.findSlotForHour(slots, hour);
-        const booked = slot ? (parseInt(slot.booked_count) || 0) : 0;
+    const slots = CacheManager.get(state.currentService.id, state.selectedDate) || [];
+    const slot = this.findSlotForHour(slots, hour);
+    const booked = slot ? (parseInt(slot.booked_count) || 0) : 0;
 
-        // Gestione Avviso Giallo
-        let notice = document.getElementById("min-pax-notice");
-        if(!notice) {
-            notice = document.createElement("div");
-            notice.id = "min-pax-notice";
-            notice.style.cssText = "background:#fffbeb; color:#b45309; padding:12px; border-radius:6px; margin-top:12px; font-size:0.9em; border:1px solid #fcd34d; line-height:1.4;";
-            DOM.hoursGrid.after(notice);
-        }
+    // RECUPERO DINAMICO DEL MINIMO PARTECIPANTI DAL SERVIZIO
+    // Se il campo non esiste o è null, consideriamo 0 (nessun minimo)
+    const minPax = state.currentService.min_capacity_per_slot || 0;
 
-        if (booked < 3) {
-            notice.style.display = "block";
-            notice.innerHTML = booked === 0 
-                ? "Sii il primo! Serve un minimo di 3 persone: <strong>se il corso non parte, non ti sarà addebitato nulla</strong>. Preferisci bloccare subito la data? <strong> Prenota in esclusiva.</strong>"
-                : `<strong>⚠️ In attesa:</strong> Ci sono ${booked} iscritti. Si parte a 3.<br>Unisciti senza addebito immediato.`;
-        } else {
-            notice.style.display = "none";
-        }
+    // Gestione Avviso Giallo
+    let notice = document.getElementById("min-pax-notice");
+    if(!notice) {
+        notice = document.createElement("div");
+        notice.id = "min-pax-notice";
+        notice.style.cssText = "background:#fffbeb; color:#b45309; padding:12px; border-radius:6px; margin-top:12px; font-size:0.9em; border:1px solid #fcd34d; line-height:1.4;";
+        DOM.hoursGrid.after(notice);
+    }
 
-        // Visibilità Extra
-        ExtrasManager.updateVisibility(booked);
-        
-        DOM.nextBtn.disabled = false;
-        DOM.nextBtn.classList.remove('disabled');
-    },
+    // LOGICA AGGIORNATA:
+    // Mostra l'avviso SOLO SE c'è un minimo richiesto (> 0) E non è ancora stato raggiunto
+    if (minPax > 0 && booked < minPax) {
+        notice.style.display = "block";
+        notice.innerHTML = booked === 0 
+            ? `Sii il primo! Serve un minimo di <strong>${minPax} persone</strong>: <strong>se il corso non parte, non ti sarà addebitato nulla</strong>. Preferisci bloccare subito la data? <strong> Prenota in esclusiva.</strong>`
+            : `<strong>⚠️ In attesa:</strong> Ci sono ${booked} iscritti. Si parte a ${minPax}.<br>Unisciti senza addebito immediato.`;
+    } else {
+        // Se minPax è 0 oppure il numero di iscritti ha già superato il minimo, nascondi l'avviso
+        notice.style.display = "none";
+    }
+
+    // Visibilità Extra
+    ExtrasManager.updateVisibility(booked);
+    
+    DOM.nextBtn.disabled = false;
+    DOM.nextBtn.classList.remove('disabled');
+},
 
     updateNumberInputLimit(remaining) {
         if(DOM.numInput) {
