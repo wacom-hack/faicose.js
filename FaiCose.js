@@ -1936,21 +1936,23 @@ function initializeEventListeners() {
     });
 
     // CORREZIONE: Gestione semplificata dei service buttons
-    document.querySelectorAll('[data-service-slug]').forEach(btn => {
-        btn.addEventListener('click', async (e) => {
-            e.preventDefault();
-            e.stopPropagation();
+document.querySelectorAll('[data-service-slug]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+        // Se l'URL contiene target=team, NON aprire il modal
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('target') === 'team') {
+            return; // Esci e lascia che il link (#contact-form) faccia il suo lavoro
+        }
 
-            const serviceSlug = btn.dataset.serviceSlug;
-            console.log(`🎯 Click su servizio: ${serviceSlug}`);
-
-            if (!state.currentService || state.currentService.slug !== serviceSlug) {
-                await ServiceLoader.load(serviceSlug);
-            }
-
-            Modal.open();
-        });
+        e.preventDefault();
+        e.stopPropagation();
+        const serviceSlug = btn.dataset.serviceSlug;
+        if (!state.currentService || state.currentService.slug !== serviceSlug) {
+            await ServiceLoader.load(serviceSlug);
+        }
+        Modal.open();
     });
+});
 
     if (!calendarInitialized) {
         calendarInitialized = true;
