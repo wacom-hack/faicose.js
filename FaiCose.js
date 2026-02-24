@@ -51,8 +51,7 @@ const DOM = {
     modalContainer: document.querySelector('.modal-container'),
     modalOverlay: document.querySelector('.modal-overlay'),
     bookingModal: document.querySelector('.booking-modal'),
-    closeModalBtns: document.querySelectorAll('.modal-close-btn'),
-
+    closeModalBtns: document.querySelectorAll('[wized-id="closeModalBtn"]'),
     // Navigation
     steps: document.querySelectorAll(".step-content"),
     nextBtn: document.querySelector(".btn-next"),
@@ -471,7 +470,6 @@ const CacheManager = {
     }
 };
 
-// MODAL MANAGEMENT
 // MODAL MANAGEMENT
 const Modal = {
   open: function() {
