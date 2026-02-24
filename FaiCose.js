@@ -472,6 +472,7 @@ const CacheManager = {
 };
 
 // MODAL MANAGEMENT
+// MODAL MANAGEMENT
 const Modal = {
   open: function() {
     // Salva la posizione corrente dello scroll
@@ -483,6 +484,9 @@ const Modal = {
     document.body.style.top = `-${scrollY}px`;
     document.body.style.left = "0";
     document.body.style.width = "100%";
+    
+    // Aggiunge la classe per sicurezza (se usi il CSS che mi hai mandato)
+    document.body.classList.add("modal-open");
 
     // Evita scroll accidentale del body su mobile
     const preventBodyScroll = (e) => {
@@ -513,12 +517,20 @@ const Modal = {
   },
 
   close: function() {
-    // Ripristina lo scroll della pagina
-    const scrollY = document.body.dataset.scrollY || 0;
+    // Recupera la posizione esatta in formato numerico
+    const scrollY = parseInt(document.body.dataset.scrollY || '0', 10);
+    
+    // Ripristina gli stili inline della pagina
     document.body.style.position = "";
     document.body.style.top = "";
     document.body.style.left = "";
     document.body.style.width = "";
+    
+    // ⭐ FIX CRITICO: Forza lo sblocco dello scroll eliminando le classi e l'overflow
+    document.body.classList.remove('no-scroll', 'modal-open');
+    document.body.style.overflow = ""; 
+
+    // Riporta l'utente esattamente dove si trovava prima di aprire il modal
     window.scrollTo(0, scrollY);
 
     // Rimuove il listener
