@@ -47,22 +47,23 @@ const state = {
 // DOM REFERENCES
 
 const DOM = {
-    // Modal
+// Modal
     modalContainer: document.querySelector('.modal-container'),
     modalOverlay: document.querySelector('.modal-overlay'),
     bookingModal: document.querySelector('.booking-modal'),
-    closeModalBtns: document.querySelectorAll('[wized-id="closeModalBtn"]'),
+    closeModalBtns: document.querySelectorAll('#close-modal-btn'), // Usiamo l'ID invece di wized-id
+
     // Navigation
     steps: document.querySelectorAll(".step-content"),
     nextBtn: document.querySelector(".btn-next"),
     backBtn: document.querySelector(".btn-back"),
     indicators: document.querySelectorAll(".step"),
 
-    // Form inputs
+    // Form inputs (Usiamo i veri ID dei campi di Webflow!)
     numInput: document.querySelector("#numero-persone"),
-    nameInput: document.querySelector('[wized="user-name-input"]'),
-    emailInput: document.querySelector('[wized="user-email-input"]'),
-    phoneInput: document.querySelector('[wized="user-phone-input"]'),
+    nameInput: document.querySelector('#Nome-Completo'), 
+    emailInput: document.querySelector('#email'),
+    phoneInput: document.querySelector('#telefono'),
     gdprCheckbox: document.querySelector('#GDPR'),
 
     // Display elements
@@ -73,8 +74,8 @@ const DOM = {
     extrasContainer: document.querySelector(".extras-container"),
 
     // Calendar
-    calendarGrid: document.querySelector('[wized="calendar-grid"]'),
-    monthLabel: document.querySelector('[wized="calendar-month"]'),
+    calendarGrid: document.querySelector('.calendar-grid'), // Usiamo la classe
+    monthLabel: document.querySelector('.calendar-header .h5-heading'), // Selettore combinato
     prevMonthBtn: document.querySelector('.prevmonthbtn'),
     nextMonthBtn: document.querySelector('.nextmonthbtn'),
 
