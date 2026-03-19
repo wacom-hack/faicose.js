@@ -1234,22 +1234,22 @@ const HoursManager = {
         DOM.hoursGrid.innerHTML = '<p style="text-align: center; width: 100%;">Caricamento orari...</p>';
         
         try {
-            const hours = this.getAvailableHours();
+            const hours = HoursManager.getAvailableHours();
             if (hours.length === 0) {
                 DOM.hoursGrid.innerHTML = '<p style="text-align: center; width: 100%;">Nessun orario disponibile.</p>';
-                this.disableNextButton();
+                HoursManager.disableNextButton();
                 return;
             }
             
-            const slots = await this.loadSlots();
-            const busyInfo = await this.preloadArtisanBusyInfo(hours);
+            const slots = await HoursManager.loadSlots();
+            const busyInfo = await HoursManager.preloadArtisanBusyInfo(hours);
             
             DOM.hoursGrid.innerHTML = '';
             let firstAvailable = null;
 
             hours.forEach(h => {
                 const isBusy = busyInfo[h] || false;
-                const btn = this.createHourButton(h, slots, isBusy);
+                const btn = HoursManager.createHourButton(h, slots, isBusy);
                 
                 if (!btn.disabled && firstAvailable === null) firstAvailable = h;
                 DOM.hoursGrid.appendChild(btn);
@@ -1257,9 +1257,9 @@ const HoursManager = {
 
             if (firstAvailable !== null) {
                 // Opzionale: Seleziona automaticamente il primo orario libero
-                // this.selectHour(firstAvailable);
+                // HoursManager.selectHour(firstAvailable);
             } else {
-                this.disableNextButton();
+                HoursManager.disableNextButton();
             }
 
         } catch (e) {
@@ -1269,8 +1269,6 @@ const HoursManager = {
     },
 
     getAvailableHours() {
-        // ... (Usa la versione che avevi già nel codice completo, oppure copiala dal mio messaggio precedente se ti serve)
-        // Per brevità qui metto la logica standard
         const dayName = CONFIG.DAY_NAMES[(state.selectedDate.getDay() + 6) % 7];
         const duration = state.currentService.duration_minutes / 60;
         
@@ -1305,7 +1303,7 @@ const HoursManager = {
         } catch (e) { return []; }
     },
 
-async preloadArtisanBusyInfo(hours) {
+    async preloadArtisanBusyInfo(hours) {
         if (!state.currentService._artisan) {
             console.log("⚠️ [DEBUG] Nessun artigiano assegnato a questo servizio.");
             return {};
@@ -1319,7 +1317,7 @@ async preloadArtisanBusyInfo(hours) {
             console.log(`✅ [DEBUG] RAW Xano Risposta:`, bookings);
             
             hours.forEach(h => { 
-                res[h] = this.isArtisanBusy(bookings, h); 
+                res[h] = HoursManager.isArtisanBusy(bookings, h); 
                 console.log(`🕒 [DEBUG] Ora ${h}: Artigiano bloccato? -> ${res[h]}`);
             });
             
@@ -1331,120 +1329,156 @@ async preloadArtisanBusyInfo(hours) {
         return res;
     },
 
+    isArtisanBusy(bookings, hour) {
+        let validBookings = bookings;
+        if (!Array.isArray(bookings)) {
+            if (bookings && bookings.response && Array.isArray(bookings.response)) validBookings = bookings.response;
+            else if (bookings && bookings.artisan_bookings && Array.isArray(bookings.artisan_bookings)) validBookings = bookings.artisan_bookings;
+            else {
+                console.log(`⚠️ [DEBUG] bookings non è un array! Formato inatteso.`, bookings);
+                return false;
+            }
+        }
+
+        const durationMins = parseFloat(state.currentService.duration_minutes);
+        if (isNaN(durationMins)) {
+            console.error(`🚨 [CRITICO] duration_minutes non è un numero valido per questo servizio! Valore:`, state.currentService.duration_minutes);
+            return false; 
+        }
+
+        const duration = durationMins / 60;
+        const start = hour; 
+        const end = hour + duration;
+        
+        return validBookings.some(b => {
+            if (b.service_id === state.currentService.id) {
+                console.log(`⏩ [DEBUG] H ${hour} - Salto prenotazione ID ${b.slot_id} perché è dello STESSO servizio (ID ${b.service_id}). Se ne occuperà la capienza slot.`);
+                return false;
+            }
+
+            const timeField = b.slot_start_time;
+            if (!timeField) {
+                console.log(`⚠️ [DEBUG] Prenotazione senza slot_start_time trovata!`, b);
+                return false;
+            }
+
+            const bStartT = timeField > 10000000000 ? timeField : timeField * 1000;
+            const bStart = new Date(bStartT).getHours();
+            
+            const bEndT = b.slot_end_time > 10000000000 ? b.slot_end_time : b.slot_end_time * 1000;
+            const bEnd = b.slot_end_time ? new Date(bEndT).getHours() : (bStart + 2); 
+            
+            const isOverlapping = (start < bEnd && end > bStart);
+            
+            if (isOverlapping) {
+                console.log(`🛑 [DEBUG] SOVRAPPOSIZIONE! Servizio H ${start}-${end} incrocia prenotazione altrui H ${bStart}-${bEnd} (Servizio ID: ${b.service_id})`);
+            }
+            
+            return isOverlapping;
+        });
+    },
+
     findSlotForHour(slots, hour) {
         if (!slots || !Array.isArray(slots)) return null;
         const ts = Utils.createTimestamp(state.selectedDate, hour);
-        // Tolleranza millisecondi se necessario
         return slots.find(s => {
             const sTime = s.start_time > 10000000000 ? s.start_time : s.start_time * 1000;
             return sTime === ts;
         }) || null;
     },
 
-createHourButton(hour, slots, isBusy) {
-    const btn = document.createElement('button');
-    btn.dataset.hour = String(hour);
-    btn.classList.add('button-3', 'w-button');
-    btn.setAttribute('type', 'button');
+    createHourButton(hour, slots, isBusy) {
+        const btn = document.createElement('button');
+        btn.dataset.hour = String(hour);
+        btn.classList.add('button-3', 'w-button');
+        btn.setAttribute('type', 'button');
 
-    // --- FIX ORARIO: Calcolo corretto minuti ---
-    const durationHours = state.currentService.duration_minutes / 60;
-    const endDecimal = hour + durationHours;
+        const durationHours = state.currentService.duration_minutes / 60;
+        const endDecimal = hour + durationHours;
 
-    // Funzione interna per trasformare 10.5 in "10:30"
-    const formatDecimalTime = (decimalTime) => {
-        const h = Math.floor(decimalTime);
-        const m = Math.round((decimalTime - h) * 60);
-        return `${h}:${String(m).padStart(2, '0')}`; // Aggiunge lo zero davanti se necessario (es. :00, :05)
-    };
+        const formatDecimalTime = (decimalTime) => {
+            const h = Math.floor(decimalTime);
+            const m = Math.round((decimalTime - h) * 60);
+            return `${h}:${String(m).padStart(2, '0')}`; 
+        };
 
-    const startStr = formatDecimalTime(hour);      // es. "9:00"
-    const endStr = formatDecimalTime(endDecimal);  // es. "10:30"
-    // -------------------------------------------
+        const startStr = formatDecimalTime(hour);      
+        const endStr = formatDecimalTime(endDecimal);  
 
-    const slot = this.findSlotForHour(slots, hour);
-    let maxCap = state.currentService.max_capacity_per_slot;
-    let booked = slot ? (parseInt(slot.booked_count) || 0) : 0;
-    let remaining = maxCap - booked;
+        const slot = HoursManager.findSlotForHour(slots, hour);
+        let maxCap = state.currentService.max_capacity_per_slot;
+        let booked = slot ? (parseInt(slot.booked_count) || 0) : 0;
+        let remaining = maxCap - booked;
 
-    const isPrivatized = slot && slot.is_exclusive === true;
+        const isPrivatized = slot && slot.is_exclusive === true;
 
-    let statusText, style = "";
-    
-    if (isBusy || isPrivatized) {
-        statusText = isPrivatized ? "Evento Privato 🔒" : "Artigiano occupato";
-        style = isPrivatized 
-            ? "background:#fef2f2; color:#991b1b; opacity:1; border: 1px solid #fecaca;" 
-            : "background:#fee2e2; color:#b91c1c; opacity:0.7;";
-        btn.disabled = true;
-    } else if (remaining <= 0) {
-        statusText = "Posti esauriti";
-        style = "opacity:0.5;";
-        btn.disabled = true;
-    } else if (booked >= 3) { // Nota: qui potresti voler usare minPax se vuoi la logica verde dinamica
-        statusText = `🔥 CONFERMATO (${remaining} posti)`;
-        style = "border: 2px solid #22c55e; background:#f0fdf4; color:#15803d;";
-    } else {
-        statusText = `${remaining} posti liberi`;
-    }
+        let statusText, style = "";
+        
+        if (isBusy || isPrivatized) {
+            statusText = isPrivatized ? "Evento Privato 🔒" : "Artigiano occupato";
+            style = isPrivatized 
+                ? "background:#fef2f2; color:#991b1b; opacity:1; border: 1px solid #fecaca;" 
+                : "background:#fee2e2; color:#b91c1c; opacity:0.7;";
+            btn.disabled = true;
+        } else if (remaining <= 0) {
+            statusText = "Posti esauriti";
+            style = "opacity:0.5;";
+            btn.disabled = true;
+        } else if (booked >= 3) { 
+            statusText = `🔥 CONFERMATO (${remaining} posti)`;
+            style = "border: 2px solid #22c55e; background:#f0fdf4; color:#15803d;";
+        } else {
+            statusText = `${remaining} posti liberi`;
+        }
 
-    // Qui usiamo le nuove stringhe formattate
-    btn.innerHTML = `
-        <div style="font-weight:bold">${startStr} - ${endStr}</div>
-        <div style="font-size:0.8em; margin-top:4px;">${statusText}</div>
-    `;
-    if(style) btn.style.cssText = style;
+        btn.innerHTML = `
+            <div style="font-weight:bold">${startStr} - ${endStr}</div>
+            <div style="font-size:0.8em; margin-top:4px;">${statusText}</div>
+        `;
+        if(style) btn.style.cssText = style;
 
-    if(!btn.disabled) {
-        btn.addEventListener('click', () => {
-            this.selectHour(hour);
-            PricingManager.update();
-            this.updateNumberInputLimit(remaining);
-        });
-    }
-    return btn;
-},
+        if(!btn.disabled) {
+            btn.addEventListener('click', () => {
+                HoursManager.selectHour(hour);
+                PricingManager.update();
+                HoursManager.updateNumberInputLimit(remaining);
+            });
+        }
+        return btn;
+    },
 
-selectHour(hour) {
-    state.selectedHour = hour;
-    DOM.hoursGrid.querySelectorAll('button').forEach(b => b.classList.remove('selected'));
-    DOM.hoursGrid.querySelector(`button[data-hour="${hour}"]`)?.classList.add('selected');
+    selectHour(hour) {
+        state.selectedHour = hour;
+        DOM.hoursGrid.querySelectorAll('button').forEach(b => b.classList.remove('selected'));
+        DOM.hoursGrid.querySelector(`button[data-hour="${hour}"]`)?.classList.add('selected');
 
-    const slots = CacheManager.get(state.currentService.id, state.selectedDate) || [];
-    const slot = this.findSlotForHour(slots, hour);
-    const booked = slot ? (parseInt(slot.booked_count) || 0) : 0;
+        const slots = CacheManager.get(state.currentService.id, state.selectedDate) || [];
+        const slot = HoursManager.findSlotForHour(slots, hour);
+        const booked = slot ? (parseInt(slot.booked_count) || 0) : 0;
 
-    // RECUPERO DINAMICO DEL MINIMO PARTECIPANTI DAL SERVIZIO
-    // Se il campo non esiste o è null, consideriamo 0 (nessun minimo)
-    const minPax = state.currentService.min_capacity_per_slot || 0;
+        const minPax = state.currentService.min_capacity_per_slot || 0;
 
-    // Gestione Avviso Giallo
-    let notice = document.getElementById("min-pax-notice");
-    if(!notice) {
-        notice = document.createElement("div");
-        notice.id = "min-pax-notice";
-        notice.style.cssText = "background:#fffbeb; color:#b45309; padding:12px; border-radius:6px; margin-top:12px; font-size:0.9em; border:1px solid #fcd34d; line-height:1.4;";
-        DOM.hoursGrid.after(notice);
-    }
+        let notice = document.getElementById("min-pax-notice");
+        if(!notice) {
+            notice = document.createElement("div");
+            notice.id = "min-pax-notice";
+            notice.style.cssText = "background:#fffbeb; color:#b45309; padding:12px; border-radius:6px; margin-top:12px; font-size:0.9em; border:1px solid #fcd34d; line-height:1.4;";
+            DOM.hoursGrid.after(notice);
+        }
 
-    // LOGICA AGGIORNATA:
-    // Mostra l'avviso SOLO SE c'è un minimo richiesto (> 0) E non è ancora stato raggiunto
-    if (minPax > 0 && booked < minPax) {
-        notice.style.display = "block";
-        notice.innerHTML = booked === 0 
-            ? `Sii il primo! Serve un minimo di <strong>${minPax} persone</strong>: <strong>se il corso non parte, non ti sarà addebitato nulla</strong>. Preferisci bloccare subito la data? <strong> Prenota in esclusiva.</strong>`
-            : `<strong>⚠️ In attesa:</strong> Ci sono ${booked} iscritti. Si parte a ${minPax}.<br>Unisciti senza addebito immediato.`;
-    } else {
-        // Se minPax è 0 oppure il numero di iscritti ha già superato il minimo, nascondi l'avviso
-        notice.style.display = "none";
-    }
+        if (minPax > 0 && booked < minPax) {
+            notice.style.display = "block";
+            notice.innerHTML = booked === 0 
+                ? `Sii il primo! Serve un minimo di <strong>${minPax} persone</strong>: <strong>se il corso non parte, non ti sarà addebitato nulla</strong>. Preferisci bloccare subito la data? <strong> Prenota in esclusiva.</strong>`
+                : `<strong>⚠️ In attesa:</strong> Ci sono ${booked} iscritti. Si parte a ${minPax}.<br>Unisciti senza addebito immediato.`;
+        } else {
+            notice.style.display = "none";
+        }
 
-    // Visibilità Extra
-    ExtrasManager.updateVisibility(booked);
-    
-    DOM.nextBtn.disabled = false;
-    DOM.nextBtn.classList.remove('disabled');
-},
+        ExtrasManager.updateVisibility(booked);
+        DOM.nextBtn.disabled = false;
+        DOM.nextBtn.classList.remove('disabled');
+    },
 
     updateNumberInputLimit(remaining) {
         if(DOM.numInput) {
