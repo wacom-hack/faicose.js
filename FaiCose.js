@@ -1241,22 +1241,25 @@ const HoursManager = {
     },
 
 async preloadArtisanBusyInfo(hours) {
-        if (!state.currentService._artisan) return {};
+        if (!state.currentService._artisan) {
+            console.log("⚠️ [DEBUG] Nessun artigiano assegnato a questo servizio.");
+            return {};
+        }
         const res = {};
         
         try {
-            // Ora questa chiamata funzionerà perché l'abbiamo creata!
+            console.log(`📡 [DEBUG] Chiamo API per artigiano ID: ${state.currentService._artisan.id}`);
             const bookings = await API.getArtisanBookings(state.currentService._artisan.id, state.selectedDate);
             
-            console.log(`✅ Impegni trovati per l'artigiano:`, bookings);
+            console.log(`✅ [DEBUG] RAW Xano Risposta:`, bookings);
             
             hours.forEach(h => { 
                 res[h] = this.isArtisanBusy(bookings, h); 
+                console.log(`🕒 [DEBUG] Ora ${h}: Artigiano bloccato? -> ${res[h]}`);
             });
             
         } catch(e) {
-            console.error("❌ Errore nel caricamento impegni artigiano:", e);
-            // Fallback: se la chiamata fallisce, consideriamo l'artigiano libero (o puoi bloccare tutto, dipende da te)
+            console.error("❌ [DEBUG] Errore API impegni artigiano:", e);
             hours.forEach(h => { res[h] = false; }); 
         }
         
@@ -1276,19 +1279,56 @@ async getArtisanBookings(artisanId, date) {
     },
 
     isArtisanBusy(bookings, hour) {
-        if(!bookings || !Array.isArray(bookings)) return false;
-        const duration = state.currentService.duration_minutes / 60;
+        // 1. Controllo validità Array
+        let validBookings = bookings;
+        if (!Array.isArray(bookings)) {
+            // Se Xano imbusta la risposta, cerchiamo di estrarla
+            if (bookings && bookings.response && Array.isArray(bookings.response)) validBookings = bookings.response;
+            else if (bookings && bookings.artisan_bookings && Array.isArray(bookings.artisan_bookings)) validBookings = bookings.artisan_bookings;
+            else {
+                console.log(`⚠️ [DEBUG] bookings non è un array! Formato inatteso.`, bookings);
+                return false;
+            }
+        }
+
+        // 2. Controllo Durata Servizio (Il sospettato n.1)
+        const durationMins = parseFloat(state.currentService.duration_minutes);
+        if (isNaN(durationMins)) {
+            console.error(`🚨 [CRITICO] duration_minutes non è un numero valido per questo servizio! Valore:`, state.currentService.duration_minutes);
+            return false; // Se non c'è durata, la logica si rompe. Restituisco libero.
+        }
+
+        const duration = durationMins / 60;
         const start = hour; 
         const end = hour + duration;
         
-        return bookings.some(b => {
-            if (b.service_id === state.currentService.id) return false;
-            // Gestione timestamp o stringa
-            const bStartT = b.slot_start_time > 10000000000 ? b.slot_start_time : b.slot_start_time * 1000;
-            const bEndT = b.slot_end_time > 10000000000 ? b.slot_end_time : b.slot_end_time * 1000;
+        return validBookings.some(b => {
+            // 3. Ignora se stesso
+            if (b.service_id === state.currentService.id) {
+                console.log(`⏩ [DEBUG] H ${hour} - Salto prenotazione ID ${b.slot_id} perché è dello STESSO servizio (ID ${b.service_id}). Se ne occuperà la capienza slot.`);
+                return false;
+            }
+
+            const timeField = b.slot_start_time;
+            if (!timeField) {
+                console.log(`⚠️ [DEBUG] Prenotazione senza slot_start_time trovata!`, b);
+                return false;
+            }
+
+            const bStartT = timeField > 10000000000 ? timeField : timeField * 1000;
             const bStart = new Date(bStartT).getHours();
-            const bEnd = new Date(bEndT).getHours();
-            return start < bEnd && end > bStart;
+            
+            // Xano ti passa anche b.slot_end_time! Usiamolo per massima precisione
+            const bEndT = b.slot_end_time > 10000000000 ? b.slot_end_time : b.slot_end_time * 1000;
+            const bEnd = b.slot_end_time ? new Date(bEndT).getHours() : (bStart + 2); // Fallback a 2h se end_time manca
+            
+            const isOverlapping = (start < bEnd && end > bStart);
+            
+            if (isOverlapping) {
+                console.log(`🛑 [DEBUG] SOVRAPPOSIZIONE! Servizio H ${start}-${end} incrocia prenotazione altrui H ${bStart}-${bEnd} (Servizio ID: ${b.service_id})`);
+            }
+            
+            return isOverlapping;
         });
     },
 
