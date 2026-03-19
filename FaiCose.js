@@ -85,6 +85,7 @@ const DOM = {
 
 // UTILITY FUNCTIONS
 
+// UTILITY FUNCTIONS
 const Utils = {
     formatDateISO(date) {
         if (!date) return "";
@@ -94,7 +95,6 @@ const Utils = {
         return `${year}-${month}-${day}`;
     },
 
-    // ✅ FUNZIONE AGGIUNTA CORRETTAMENTE
     formatCurrency(amountInCents) {
         if (amountInCents === undefined || amountInCents === null) return '€ 0,00';
         const amount = amountInCents / 100;
@@ -112,12 +112,22 @@ const Utils = {
         return `${day}/${month}/${year}`;
     },
 
-    createTimestamp(date, hour) {
+    // ⭐ QUESTA TRASFORMA 11.333 in "11:20" PER IL RIEPILOGO VISIVO
+    formatTime(decimalHour) {
+        const h = Math.floor(decimalHour);
+        const m = Math.round((decimalHour - h) * 60);
+        return `${h}:${String(m).padStart(2, '0')}`;
+    },
+
+    // ⭐ QUESTA SALVA I MINUTI CORRETTI DA MANDARE A XANO
+    createTimestamp(date, decimalHour) {
+        const h = Math.floor(decimalHour);
+        const m = Math.round((decimalHour - h) * 60);
         return new Date(
             date.getFullYear(),
             date.getMonth(),
             date.getDate(),
-            hour, 0, 0, 0
+            h, m, 0, 0
         ).getTime();
     },
 
@@ -200,7 +210,6 @@ const Utils = {
         return checkDate < today;
     },
 
-    // Normalizzazione data (Versione robusta)
     normalizeDate(date) {
         if (!(date instanceof Date)) {
             date = new Date(date);
@@ -1747,20 +1756,18 @@ const RecapManager = {
         });
     },
 
-    updateBookingInfo(recapStep) {
-
+updateBookingInfo(recapStep) {
         const serviceNameEl = recapStep.querySelector(".nome-servizio");
         if (serviceNameEl) {
             serviceNameEl.textContent = state.currentService.name;
         }
 
-
         const dateTimeEl = recapStep.querySelector(".data-ora");
         if (dateTimeEl && state.selectedDate && state.selectedHour !== null) {
             const formattedDate = Utils.formatDateDDMMYYYY(state.selectedDate);
-            dateTimeEl.textContent = `${formattedDate} alle ore ${state.selectedHour}:00`;
+            // ⭐ USIAMO IL NUOVO FORMATTATORE, SENZA IL VECCHIO :00 INCOLLATO
+            dateTimeEl.textContent = `${formattedDate} alle ore ${Utils.formatTime(state.selectedHour)}`;
         }
-
 
         const guestsEl = recapStep.querySelector(".numero-ospiti");
         if (guestsEl && DOM.numInput) {
