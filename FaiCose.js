@@ -338,6 +338,71 @@ async getServiceBySlug(slug) {
 
         return service;
     },
+    async getArtisanBookings(artisanId, date) {
+        // L'endpoint si aspetta 'date' come text (es. "2026-03-19")
+        const dateStr = Utils.formatDateISO(date);
+        
+        console.log(`📡 Scarico impegni artigiano ${artisanId} per il ${dateStr}...`);
+        
+        // Chiamiamo il tuo endpoint esatto: GET /artisan_bookings
+        const response = await this.request(`/artisan_bookings?artisan_id=${artisanId}&date=${dateStr}`);
+        
+        return response;
+    },
+
+    isArtisanBusy(bookings, hour) {
+        // 1. Controllo validità Array
+        let validBookings = bookings;
+        if (!Array.isArray(bookings)) {
+            // Se Xano imbusta la risposta, cerchiamo di estrarla
+            if (bookings && bookings.response && Array.isArray(bookings.response)) validBookings = bookings.response;
+            else if (bookings && bookings.artisan_bookings && Array.isArray(bookings.artisan_bookings)) validBookings = bookings.artisan_bookings;
+            else {
+                console.log(`⚠️ [DEBUG] bookings non è un array! Formato inatteso.`, bookings);
+                return false;
+            }
+        }
+
+        // 2. Controllo Durata Servizio (Il sospettato n.1)
+        const durationMins = parseFloat(state.currentService.duration_minutes);
+        if (isNaN(durationMins)) {
+            console.error(`🚨 [CRITICO] duration_minutes non è un numero valido per questo servizio! Valore:`, state.currentService.duration_minutes);
+            return false; // Se non c'è durata, la logica si rompe. Restituisco libero.
+        }
+
+        const duration = durationMins / 60;
+        const start = hour; 
+        const end = hour + duration;
+        
+        return validBookings.some(b => {
+            // 3. Ignora se stesso
+            if (b.service_id === state.currentService.id) {
+                console.log(`⏩ [DEBUG] H ${hour} - Salto prenotazione ID ${b.slot_id} perché è dello STESSO servizio (ID ${b.service_id}). Se ne occuperà la capienza slot.`);
+                return false;
+            }
+
+            const timeField = b.slot_start_time;
+            if (!timeField) {
+                console.log(`⚠️ [DEBUG] Prenotazione senza slot_start_time trovata!`, b);
+                return false;
+            }
+
+            const bStartT = timeField > 10000000000 ? timeField : timeField * 1000;
+            const bStart = new Date(bStartT).getHours();
+            
+            // Xano ti passa anche b.slot_end_time! Usiamolo per massima precisione
+            const bEndT = b.slot_end_time > 10000000000 ? b.slot_end_time : b.slot_end_time * 1000;
+            const bEnd = b.slot_end_time ? new Date(bEndT).getHours() : (bStart + 2); // Fallback a 2h se end_time manca
+            
+            const isOverlapping = (start < bEnd && end > bStart);
+            
+            if (isOverlapping) {
+                console.log(`🛑 [DEBUG] SOVRAPPOSIZIONE! Servizio H ${start}-${end} incrocia prenotazione altrui H ${bStart}-${bEnd} (Servizio ID: ${b.service_id})`);
+            }
+            
+            return isOverlapping;
+        });
+    },
 
 
 async getSlots(serviceId, date) {
@@ -1264,72 +1329,6 @@ async preloadArtisanBusyInfo(hours) {
         }
         
         return res;
-    },
-
-async getArtisanBookings(artisanId, date) {
-        // L'endpoint si aspetta 'date' come text (es. "2026-03-19")
-        const dateStr = Utils.formatDateISO(date);
-        
-        console.log(`📡 Scarico impegni artigiano ${artisanId} per il ${dateStr}...`);
-        
-        // Chiamiamo il tuo endpoint esatto: GET /artisan_bookings
-        const response = await this.request(`/artisan_bookings?artisan_id=${artisanId}&date=${dateStr}`);
-        
-        return response;
-    },
-
-    isArtisanBusy(bookings, hour) {
-        // 1. Controllo validità Array
-        let validBookings = bookings;
-        if (!Array.isArray(bookings)) {
-            // Se Xano imbusta la risposta, cerchiamo di estrarla
-            if (bookings && bookings.response && Array.isArray(bookings.response)) validBookings = bookings.response;
-            else if (bookings && bookings.artisan_bookings && Array.isArray(bookings.artisan_bookings)) validBookings = bookings.artisan_bookings;
-            else {
-                console.log(`⚠️ [DEBUG] bookings non è un array! Formato inatteso.`, bookings);
-                return false;
-            }
-        }
-
-        // 2. Controllo Durata Servizio (Il sospettato n.1)
-        const durationMins = parseFloat(state.currentService.duration_minutes);
-        if (isNaN(durationMins)) {
-            console.error(`🚨 [CRITICO] duration_minutes non è un numero valido per questo servizio! Valore:`, state.currentService.duration_minutes);
-            return false; // Se non c'è durata, la logica si rompe. Restituisco libero.
-        }
-
-        const duration = durationMins / 60;
-        const start = hour; 
-        const end = hour + duration;
-        
-        return validBookings.some(b => {
-            // 3. Ignora se stesso
-            if (b.service_id === state.currentService.id) {
-                console.log(`⏩ [DEBUG] H ${hour} - Salto prenotazione ID ${b.slot_id} perché è dello STESSO servizio (ID ${b.service_id}). Se ne occuperà la capienza slot.`);
-                return false;
-            }
-
-            const timeField = b.slot_start_time;
-            if (!timeField) {
-                console.log(`⚠️ [DEBUG] Prenotazione senza slot_start_time trovata!`, b);
-                return false;
-            }
-
-            const bStartT = timeField > 10000000000 ? timeField : timeField * 1000;
-            const bStart = new Date(bStartT).getHours();
-            
-            // Xano ti passa anche b.slot_end_time! Usiamolo per massima precisione
-            const bEndT = b.slot_end_time > 10000000000 ? b.slot_end_time : b.slot_end_time * 1000;
-            const bEnd = b.slot_end_time ? new Date(bEndT).getHours() : (bStart + 2); // Fallback a 2h se end_time manca
-            
-            const isOverlapping = (start < bEnd && end > bStart);
-            
-            if (isOverlapping) {
-                console.log(`🛑 [DEBUG] SOVRAPPOSIZIONE! Servizio H ${start}-${end} incrocia prenotazione altrui H ${bStart}-${bEnd} (Servizio ID: ${b.service_id})`);
-            }
-            
-            return isOverlapping;
-        });
     },
 
     findSlotForHour(slots, hour) {
