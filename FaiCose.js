@@ -1240,14 +1240,39 @@ const HoursManager = {
         } catch (e) { return []; }
     },
 
-    async preloadArtisanBusyInfo(hours) {
+async preloadArtisanBusyInfo(hours) {
         if (!state.currentService._artisan) return {};
         const res = {};
+        
         try {
+            // Ora questa chiamata funzionerà perché l'abbiamo creata!
             const bookings = await API.getArtisanBookings(state.currentService._artisan.id, state.selectedDate);
-            hours.forEach(h => { res[h] = this.isArtisanBusy(bookings, h); });
-        } catch(e) {}
+            
+            console.log(`✅ Impegni trovati per l'artigiano:`, bookings);
+            
+            hours.forEach(h => { 
+                res[h] = this.isArtisanBusy(bookings, h); 
+            });
+            
+        } catch(e) {
+            console.error("❌ Errore nel caricamento impegni artigiano:", e);
+            // Fallback: se la chiamata fallisce, consideriamo l'artigiano libero (o puoi bloccare tutto, dipende da te)
+            hours.forEach(h => { res[h] = false; }); 
+        }
+        
         return res;
+    },
+
+async getArtisanBookings(artisanId, date) {
+        // L'endpoint si aspetta 'date' come text (es. "2026-03-19")
+        const dateStr = Utils.formatDateISO(date);
+        
+        console.log(`📡 Scarico impegni artigiano ${artisanId} per il ${dateStr}...`);
+        
+        // Chiamiamo il tuo endpoint esatto: GET /artisan_bookings
+        const response = await this.request(`/artisan_bookings?artisan_id=${artisanId}&date=${dateStr}`);
+        
+        return response;
     },
 
     isArtisanBusy(bookings, hour) {
