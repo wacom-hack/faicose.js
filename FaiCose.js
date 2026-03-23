@@ -1280,44 +1280,51 @@ const HoursManager = {
 getAvailableHours() {
         const dayName = CONFIG.DAY_NAMES[(state.selectedDate.getDay() + 6) % 7];
         const duration = state.currentService.duration_minutes / 60;
+        const res = [];
         
-        // ⭐ NUOVA FUNZIONE HELPER: converte "10:30" in 10.5 per i calcoli
+        // Convertitore orari
         const parseTime = (timeStr) => {
             if (!timeStr) return 0;
             const parts = timeStr.split(':');
-            const h = parseInt(parts[0] || 0, 10);
-            const m = parseInt(parts[1] || 0, 10);
-            return h + (m / 60);
+            return parseInt(parts[0] || 0, 10) + (parseInt(parts[1] || 0, 10) / 60);
         };
 
         const rule = CalendarManager.findRuleForDate(state.selectedDate);
         
+        // 1. SE CI SONO REGOLE SPECIFICHE (Es. turni spezzati)
         if (rule?.daily_schedules) {
             let schedules = rule.daily_schedules;
             if (Array.isArray(schedules[0])) schedules = schedules.flat();
-            const todaySched = schedules.find(s => s.day === dayName);
             
-            if (todaySched) {
-                const start = parseTime(todaySched.start);
-                const end = parseTime(todaySched.end);
-                const res = [];
+            // Invece di .find() usiamo .filter() per prendere TUTTI i turni di quel giorno!
+            const todaySchedules = schedules.filter(s => s.day === dayName);
+            
+            if (todaySchedules.length > 0) {
+                todaySchedules.forEach(sched => {
+                    const start = parseTime(sched.start);
+                    const end = parseTime(sched.end);
+                    
+                    // Crea gli slot per QUESTO specifico blocco (es. 10:00-12:30)
+                    for(let h = start; (h + duration) <= (end + 0.01); h += duration) {
+                        res.push(h);
+                    }
+                });
                 
-                // ⭐ CORREZIONE: (h + duration) <= (end + 0.01)
-                // Così il corso non sfora l'orario di chiusura dell'artigiano
-                for(let h = start; (h + duration) <= (end + 0.01); h += duration) {
-                    res.push(h);
-                }
-                return res;
+                // Ordina gli orari dal mattino alla sera e restituisci
+                return res.sort((a, b) => a - b);
             }
         }
+
+        // 2. FALLBACK AGLI ORARI STANDARD (Se non ci sono regole nel JSON)
+        const defaultStart = parseTime(state.currentService.working_hours_start);
+        const defaultEnd = parseTime(state.currentService.working_hours_end);
         
-        // Fallback agli orari standard se non ci sono regole speciali per oggi
-        const start = parseTime(state.currentService.working_hours_start);
-        const end = parseTime(state.currentService.working_hours_end);
-        const res = [];
-        
-        for(let h = start; (h + duration) <= (end + 0.01); h += duration) {
-            res.push(h);
+        for(let h = defaultStart; (h + duration) <= (defaultEnd + 0.01); h += duration) {
+            // Manteniamo il blocco pausa pranzo 13-14 SOLO per gli orari standard vecchi
+            const slotEnd = h + duration;
+            if (!(h < 14 && slotEnd > 13)) {
+                res.push(h);
+            }
         }
         
         return res;
