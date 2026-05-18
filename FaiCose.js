@@ -1349,10 +1349,22 @@ getAvailableHours() {
         const res = {};
         
         try {
-            console.log(`📡 [DEBUG] Chiamo API per artigiano ID: ${state.currentService._artisan.id}`);
-            const bookings = await API.getArtisanBookings(state.currentService._artisan.id, state.selectedDate);
+            const artisanId = state.currentService._artisan.id;
+            const selectedDate = state.selectedDate;
             
-            console.log(`✅ [DEBUG] RAW Xano Risposta:`, bookings);
+            // 🌟 CORREZIONE: Controlliamo prima se i dati sono già presenti in cache
+            let bookings = CacheManager.getArtisanBookings(artisanId, selectedDate);
+            
+            if (!bookings) {
+                console.log(`📡 [DEBUG] Cache vuota. Chiamo API per artigiano ID: ${artisanId}`);
+                bookings = await API.getArtisanBookings(artisanId, selectedDate);
+                // Salviamo il risultato in cache per evitare tempeste di richieste
+                CacheManager.setArtisanBookings(artisanId, selectedDate, bookings);
+            } else {
+                console.log(`✅ [DEBUG] Utilizzo prenotazioni ARTIGIANO recuperate dalla CACHE`);
+            }
+            
+            console.log(`✅ [DEBUG] Risposta impegni analizzati:`, bookings);
             
             hours.forEach(h => { 
                 res[h] = HoursManager.isArtisanBusy(bookings, h); 
